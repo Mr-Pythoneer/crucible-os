@@ -18,10 +18,10 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 ## 2. Drivers (§3) — `drivers/`
 
 - [x] Design doc section written
-- [ ] Nvidia proprietary driver install script
-- [ ] Secure Boot MOK key generation + signing flow for the Nvidia kernel module
-- [ ] AMD CPU microcode package install/verification script
-- [ ] Driver verification script (confirm `nvidia-smi` works, confirm microcode loaded via `dmesg`/`cat /proc/cpuinfo`)
+- [x] Nvidia proprietary driver install script
+- [x] Secure Boot MOK signing flow (documented/guided, not silently automated — see `drivers/install-nvidia.sh`)
+- [x] AMD CPU microcode package install/verification script
+- [x] Driver verification script (confirm `nvidia-smi` works, confirm microcode loaded via `dmesg`/`journalctl`)
 - [ ] **(needs hardware)** end-to-end test on a real Nvidia GPU + AMD CPU box
 
 ## 3. AI mode (§5) — `modes/ai/`
@@ -43,21 +43,23 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [x] `distro-modectl switch <mode>` — CPU governor, power profile, service toggling
 - [x] Wired into `distro-ai-preset`
 - [x] Display-manager-disable confirmation safety + `--yes` flag for non-interactive use
+- [x] Best-effort `PINNED_APPS` dock-pinning via `gsettings` (GNOME-only, runs pre-sudo so it has the user's session bus; desktop-file IDs unverified)
 - [ ] **(needs hardware/VM)** verify `cpupower`/`powerprofilesctl` calls on a real (non-Mac) Linux box — this part doesn't need the GPU server specifically
 - [ ] **(needs hardware/VM)** verify service enable/disable doesn't fight stock Ubuntu defaults
 - [ ] GPU performance-state pinning beyond `power-profiles-daemon` (`nvidia-settings`/PRIME) — **(needs hardware)**
 
 ## 5. Gaming mode — `modes/gaming/`
 
-- [ ] Proton-GE install/update script
-- [ ] Wine-staging install
-- [ ] Bottles install (GUI front-end, so most users never touch raw `wine`)
-- [ ] DXVK + VKD3D-Proton install/verification
-- [ ] GameMode install (`gamemoderun` wrapper, per-launch — not a system service, see `modes/modectl/profiles/gaming.conf`)
-- [ ] MangoHud install + default overlay config
-- [ ] winetricks bundled
-- [ ] Steam + Lutris install scripts
+- [x] Proton-GE install/update script (latest GitHub release, auto-fetched)
+- [x] Wine-staging install (WineHQ repo, with fallback if codename unsupported yet)
+- [x] Bottles install (Flatpak/Flathub, GUI front-end so most users never touch raw `wine`)
+- [x] GameMode + MangoHud install (per-launch, not system services)
+- [x] winetricks bundled (via wine-staging script)
+- [x] Steam + Lutris install scripts
+- [x] verify-gaming.sh sanity check
+- [ ] DXVK + VKD3D-Proton standalone install for raw Wine prefixes outside Bottles/Proton-GE (low priority — both already bundle their own)
 - [ ] Curated compatibility-fix database for known-troublesome apps (Lutris-install-script style)
+- [ ] Confirm `PINNED_APPS` desktop-file IDs in `modes/modectl/profiles/gaming.conf` against a real install
 - [ ] **(needs hardware/VM)** verify a real Proton-GE game launch end to end
 
 ## 6. Server mode — `modes/server/`

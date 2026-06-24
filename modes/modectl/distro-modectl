@@ -12,6 +12,9 @@
 #   - asks for explicit confirmation before disabling a display manager
 #     (CONFIRM_DISPLAY_MANAGER_STOP=true) since that can kill an active desktop session
 #
+#   - pinning PINNED_APPS to the GNOME favorite-apps dock (best-effort,
+#     GNOME-specific, desktop-file IDs unverified — see profiles/*.conf)
+#
 # What this script does NOT do yet (see README.md TODOs — these need a real
 # desktop session to build/verify against, not just a remote shell):
 #   - DE/shell switching for Normal mode's macOS-style dock/top-bar
@@ -98,6 +101,24 @@ start_ai_preset() {
     fi
 }
 
+apply_pinned_apps() {
+    local -n apps=$1
+    [ ${#apps[@]} -eq 0 ] && return 0
+    if ! command -v gsettings >/dev/null 2>&1; then
+        echo "NOTE: gsettings not found — skipping favorite-apps pin (GNOME-only feature)." >&2
+        return 0
+    fi
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        echo "NOTE: no DBUS_SESSION_BUS_ADDRESS — gsettings needs a real logged-in graphical session, not a root/SSH shell. Skipping favorite-apps pin." >&2
+        return 0
+    fi
+    local joined
+    joined=$(printf "'%s', " "${apps[@]}")
+    joined="[${joined%, }]"
+    echo "Pinning to dock (GNOME favorite-apps, desktop-file IDs unverified): ${apps[*]}"
+    gsettings set org.gnome.shell favorite-apps "$joined" || echo "WARNING: gsettings call failed — desktop-file IDs may not match what's actually installed." >&2
+}
+
 confirm_or_abort() {
     local prompt="$1"
     if [ "$ASSUME_YES" = "true" ]; then
@@ -133,6 +154,10 @@ do_switch() {
             fi
         done
     fi
+
+    # Run before the sudo re-exec below: gsettings needs the invoking user's
+    # own session bus, not root's.
+    apply_pinned_apps PINNED_APPS
 
     require_root_for switch "$mode"
 
