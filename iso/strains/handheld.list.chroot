@@ -1,9 +1,8 @@
 ## Handheld/tablet strain (Steam-Deck-class x86_64 devices): same package
-## set as workstation for now. Touch-input and gamepad-first UI tuning are
-## runtime/session config concerns (on-screen keyboard, Big Picture-style
-## launcher defaults), not a package-list difference -- not built yet, see
-## TODO.md. This file exists so the strain is selectable today even though
-## its actual differentiation from workstation is still TODO.
+## set as workstation -- real differentiation is runtime/session config
+## (on-screen keyboard, UI text scaling, Big Picture autostart), not a
+## package-list difference, so it lives in handheld/setup-handheld-ui.sh
+## instead of here. Run that script post-install/first-login.
 ubuntu-desktop-minimal
 flatpak
 gnome-shell-extensions

@@ -106,7 +106,7 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [ ] **(needs Linux build host — live-build doesn't run on macOS at all)** actually run `./build.sh` for the first time, for each strain
 - [ ] First buildable ISO (boots in a VM, even before all modes are polished) — **(needs Linux build host)**
 - [x] Confirmed `lubuntu-desktop`/`ubuntu-desktop-minimal` are both current real Noble (24.04) metapackages (Launchpad-verified, 2026-06-25). Also confirmed `lubuntu-desktop` is LXQt, not legacy LXDE (transitioned in 2018) — the `iso/strains/lowspec.list.chroot` comment describing it as LXQt was already correct.
-- [ ] `handheld` strain's actual differentiation (touch/gamepad UI) — currently identical to workstation, scaffolded but not built
+- [x] `handheld` strain's actual differentiation (`iso/strains/handheld/setup-handheld-ui.sh`: on-screen keyboard, UI text scaling, Steam Big Picture autostart via stable GNOME gsettings schemas) — execution-tested all branches (root/session guards, Steam present/absent) with stubbed `gsettings`/`steam`
 - [ ] `cloud` strain's delivery format — should eventually be a qcow2/raw cloud image + cloud-init, not an installer ISO; currently only the package-selection half exists
 - [ ] Decide whether to invest in `config/archives/` to bake Docker/Steam/etc. in at build time, once verified against a real host
 - [x] Calamares installer config skeleton (`iso/calamares/`: settings, welcome, users, partition modules + branding descriptor) — YAML-validated, but unverified against a real Calamares run; `partition.conf` flagged as lowest confidence

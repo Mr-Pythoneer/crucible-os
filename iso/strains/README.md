@@ -12,7 +12,7 @@ starting point for that class of machine.
 | `laptop` | GNOME | + `tlp`/`tlp-rdw` for battery/power management |
 | `lowspec` | LXQt (`lubuntu-desktop`) | Lightest official Ubuntu DE; skips gamemode/mangohud/winetricks by default (added on-demand via `modes/gaming/setup/` if actually needed) |
 | `server` | none | Headless; relies on `modes/server/setup/*.sh` post-boot, same lean-image philosophy as the rest of `iso/` |
-| `handheld` | GNOME | Same package set as `workstation` for now — touch/gamepad-first UI tuning is NOT built yet, this strain exists so it's selectable, not because it's differentiated |
+| `handheld` | GNOME | Same package set as `workstation`; real differentiation is `handheld/setup-handheld-ui.sh` — on-screen keyboard, UI text scaling, Steam Big Picture autostart |
 | `cloud` | none | `cloud-init` only. **Delivery format should eventually differ too** (qcow2/raw image + cloud-init, not an installer ISO/Calamares) — not built, this is the package-selection half only |
 
 ## Usage
@@ -31,10 +31,14 @@ shows up in the ISO's `--iso-application` string and the output filename
 ## What's real vs. what's a placeholder here
 
 `workstation`/`laptop`/`lowspec`/`server` are real package-selection
-differences. `handheld` and `cloud` are scaffolding — selectable today,
-but their actual differentiation (touch/gamepad UI for handheld, a
-cloud-image delivery format instead of an ISO for cloud) is unbuilt. Don't
-mistake "this strain exists in the list" for "this strain is done."
+differences. `handheld` now has real differentiation too, just not at the
+package-list level — see `handheld/setup-handheld-ui.sh`
+(execution-tested: root/session guards, on-screen keyboard + text-scaling
+gsettings calls, and both the Steam-present and Steam-absent autostart
+branches, all with stubbed `gsettings`/`steam`). `cloud` is still
+scaffolding — its actual differentiation (a cloud-image delivery format
+instead of an ISO) is unbuilt. Don't mistake "this strain exists in the
+list" for "this strain is done."
 
 ## Explicitly out of scope for this repo
 
