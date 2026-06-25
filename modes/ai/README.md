@@ -39,6 +39,23 @@ cp /opt/crucible12/config/opencode.crucible.json ./opencode.json
 opencode
 ```
 
+## Optional cloud fallback (explicit opt-in only)
+
+`bin/distro-ai-cloud-toggle enable` switches the current project's OpenCode
+config to route through Claude (cloud) instead of a local preset — for when
+you want a stronger model and have connectivity, per DESIGN.md §5's
+"explicit opt-in, never silently substituted in" stance (same principle as
+OpenClaw's gateway). Requires you to set `ANTHROPIC_API_KEY` yourself; the
+script refuses to proceed without it rather than failing silently later.
+
+`config/opencode.claude-cloud.json`'s env-var interpolation syntax
+(`"{env:ANTHROPIC_API_KEY}"`) is a guess based on common config patterns,
+**not verified against OpenCode's actual current config schema** — same
+honesty discipline as everything else here. If OpenCode doesn't pick up
+the key with that syntax, check OpenCode's own docs for the current
+mechanism and fix the JSON file. `distro-ai-cloud-toggle enable` prints
+this same caveat every time it runs so it's not forgotten.
+
 ## Status
 
 Ported but **not yet run end-to-end** — same caveat the original Crucible12 README carries: built without access to the target GPU hardware. **The hardware itself doesn't exist yet — target build is ~3 months out (ETA ~September 2026).** This is a known, expected gap, not a blocker on other work; everything below stays unchecked until that box is built. Needs verification once it exists:

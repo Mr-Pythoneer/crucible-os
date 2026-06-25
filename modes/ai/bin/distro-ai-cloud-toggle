@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+# Explicit opt-in toggle to route OpenCode through Claude (cloud) instead
+# of (or alongside) the local Crucible12 presets. Per DESIGN.md §5: this is
+# secondary to the local-first default, never silently substituted in --
+# this script requires an explicit "enable" command and an API key the
+# user provides themselves, same OpenClaw-gateway principle of "the user's
+# own choice, not a forced background service."
+#
+# This does NOT manage a systemd unit like distro-ai-preset does -- there's
+# no local server to start for a cloud provider, it's purely an OpenCode
+# config swap plus an explicit acknowledgment that requests leave the
+# device.
+#
+# Usage:
+#   distro-ai-cloud-toggle enable    -- copies the cloud config to ./opencode.json
+#   distro-ai-cloud-toggle disable   -- prints how to switch back to a local preset
+#   distro-ai-cloud-toggle status
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLOUD_CONFIG="$SCRIPT_DIR/../config/opencode.claude-cloud.json"
+TARGET="./opencode.json"
+
+case "${1:-}" in
+    enable)
+        if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            cat <<'EOF'
+ANTHROPIC_API_KEY is not set in this shell.
+
+Get a key from https://console.anthropic.com/ and export it before
+continuing (or add it to your shell profile):
+
+  export ANTHROPIC_API_KEY="sk-ant-..."
+
+Re-run 'distro-ai-cloud-toggle enable' after that.
+EOF
+            exit 1
+        fi
+
+        echo "This sends your prompts/code to Anthropic's cloud API instead of running locally." >&2
+        echo "Confirming explicit opt-in: copying cloud config to $TARGET" >&2
+        cp "$CLOUD_CONFIG" "$TARGET"
+        echo "Done. OpenCode will use Claude (cloud) in this project until you switch back."
+        echo "Note: the env-var interpolation syntax in opencode.claude-cloud.json (\"{env:ANTHROPIC_API_KEY}\")"
+        echo "is based on common config patterns, NOT verified against OpenCode's actual current config schema --"
+        echo "if OpenCode rejects it or doesn't pick up the key, check OpenCode's docs for the current syntax"
+        echo "and fix opencode.claude-cloud.json accordingly (this is flagged in modes/ai/README.md too)."
+        ;;
+    disable)
+        echo "No state to tear down here (this script doesn't run a service)."
+        echo "To go back to a local preset: cp $SCRIPT_DIR/../config/opencode.crucible.json $TARGET"
+        echo "(and make sure a local preset is running: distro-ai-preset switch crucible)"
+        ;;
+    status)
+        if [ -f "$TARGET" ] && grep -q "claude-cloud" "$TARGET" 2>/dev/null; then
+            echo "Cloud toggle: ENABLED in $(pwd)/opencode.json"
+        else
+            echo "Cloud toggle: not enabled in $(pwd) (no opencode.json, or it doesn't reference claude-cloud)"
+        fi
+        ;;
+    *)
+        echo "Usage: $(basename "$0") enable | disable | status" >&2
+        exit 1
+        ;;
+esac

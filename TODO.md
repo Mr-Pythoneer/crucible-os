@@ -37,7 +37,7 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [ ] **(needs hardware)** preset-switch handoff doesn't race on port 8080 / VRAM release
 - [ ] Global hotkey assistant overlay (thin client hitting `localhost:8080`) — **(needs live desktop)**
 - [ ] File-manager "ask AI about this file" context menu action — **(needs live desktop)**
-- [ ] Optional Claude-cloud fallback toggle (explicit opt-in, OpenClaw-style gateway pattern)
+- [x] Optional Claude-cloud fallback toggle (`distro-ai-cloud-toggle enable|disable|status`) — explicit opt-in, refuses to proceed without the user's own `ANTHROPIC_API_KEY`. Execution-tested all 3 subcommands end to end. The JSON config's env-var interpolation syntax is flagged as an unverified guess (not confirmed against OpenCode's actual schema) — printed as a warning every time `enable` runs, not buried.
 
 ## 4. Mode-switcher (§4) — `modes/modectl/`
 
