@@ -34,4 +34,4 @@ if [ -x "$WORKDIR/WhiteSur-gnome-shell-theme/install.sh" ]; then
 fi
 
 echo -e "\033[32m\nThemes installed under ~/.themes and ~/.icons.\033[0m"
-echo "Apply with 02-configure-dock.sh / 03-configure-topbar.sh, or via GNOME Tweaks manually."
+echo "Apply with 03-apply-theme.sh (optionally reposition the dock with 02-configure-dock.sh), or set the theme via GNOME Tweaks manually."

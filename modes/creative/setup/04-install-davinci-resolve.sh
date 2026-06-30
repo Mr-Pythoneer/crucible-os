@@ -30,7 +30,11 @@ EOF
     exit 1
 fi
 
-if ! dpkg -s nvidia-driver-* >/dev/null 2>&1 && ! command -v nvidia-smi >/dev/null 2>&1; then
+# Detect a loaded Nvidia driver. `dpkg -s nvidia-driver-*` does NOT glob over
+# installed packages (dpkg -s wants exact names), so it never matched — checking
+# /proc/driver/nvidia (kernel module actually loaded, which is what Resolve cares
+# about) plus nvidia-smi is the reliable test.
+if [ ! -e /proc/driver/nvidia ] && ! command -v nvidia-smi >/dev/null 2>&1; then
     echo -e "\033[33mWARNING: no Nvidia driver detected. Resolve's Linux build expects an Nvidia GPU + driver (see drivers/install-nvidia.sh) — install that first if you haven't.\033[0m"
 fi
 

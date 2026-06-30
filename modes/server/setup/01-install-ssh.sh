@@ -36,12 +36,16 @@ PasswordAuthentication no
 PermitRootLogin no
 EOF
 
-sudo systemctl enable --now ssh
-
+# Validate BEFORE applying to the running daemon. If we enable/start first and
+# the drop-in is broken, a fresh start fails the unit and set -e aborts here
+# generically — bypassing this friendly diagnostic. Test first, remove the bad
+# drop-in on failure, and only then start/reload.
 if ! sudo sshd -t; then
-    echo "sshd config test failed — NOT reloading, the hardening config in $SSHD_CONFIG may be broken. Check 'sudo sshd -t' output above before retrying." >&2
+    echo "sshd config test failed — removing $SSHD_CONFIG, the hardening config is broken. See 'sudo sshd -t' output above." >&2
+    sudo rm -f "$SSHD_CONFIG"
     exit 1
 fi
+sudo systemctl enable --now ssh
 sudo systemctl reload ssh
 
 echo -e "\033[32mSSH installed and hardened (key-only auth, no root login).\033[0m"

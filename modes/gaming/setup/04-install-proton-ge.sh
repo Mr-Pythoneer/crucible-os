@@ -6,7 +6,30 @@
 
 set -euo pipefail
 
-INSTALL_DIR="${1:-$HOME/.steam/root/compatibilitytools.d}"
+# Resolve Steam's real compatibility-tools dir rather than hardcoding
+# ~/.steam/root. ~/.steam/{root,steam} are SYMLINKS Steam creates on its first
+# launch; if this script mkdir -p's ~/.steam/root before Steam has bootstrapped,
+# it materializes it as a real dir, Steam's first run then resolves its root
+# elsewhere, and the GE-Proton dropped here never shows in the per-game compat
+# list. So require a completed Steam first-run (detected via the symlink /
+# steamapps) unless an explicit path is passed.
+if [ -n "${1:-}" ]; then
+    INSTALL_DIR="$1"
+else
+    STEAM_ROOT=""
+    for cand in "$HOME/.steam/root" "$HOME/.steam/steam" "$HOME/.local/share/Steam"; do
+        if [ -L "$cand" ] || [ -d "$cand/steamapps" ]; then
+            STEAM_ROOT="$cand"; break
+        fi
+    done
+    if [ -z "$STEAM_ROOT" ]; then
+        echo "Steam doesn't appear to have completed its first run yet." >&2
+        echo "Launch Steam once (run: steam), let it finish setting up, then re-run this script." >&2
+        echo "(Or pass an explicit compatibilitytools.d path as \$1 to override.)" >&2
+        exit 1
+    fi
+    INSTALL_DIR="$STEAM_ROOT/compatibilitytools.d"
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "jq is required (sudo apt-get install -y jq)." >&2

@@ -5,9 +5,9 @@
 # paths defaulting to the fastest local NVMe") and sets up a scratch
 # directory there for Creative-mode render/cache use.
 #
-# Detection method: `df -lP` (local filesystems only, POSIX output, so
-# network mounts are excluded) gives every mounted filesystem + free space;
-# `lsblk -ndo ROTA,NAME` on each mount's backing device tells us whether
+# Detection method: `df -l` (local filesystems only, so network mounts are
+# excluded) with --output to select columns gives every mounted filesystem +
+# free space; `lsblk -ndo ROTA,NAME` on each mount's backing device tells us whether
 # it's rotational (HDD, ROTA=1) or not (SSD/NVMe, ROTA=0). Among non-rotational
 # candidates, devices named nvme* are preferred; if none exist, any
 # non-rotational device is used as a documented fallback rather than failing.
@@ -27,6 +27,20 @@ detect_best_mount() {
     if ! command -v df >/dev/null 2>&1 || ! command -v lsblk >/dev/null 2>&1; then
         echo "distro-creative-scratch: requires df and lsblk" >&2
         return 1
+    fi
+
+    # Do NOT add -P here: GNU coreutils df treats -P/--portability and --output
+    # as mutually exclusive, so `df -lP --output=...` errors to stderr and emits
+    # nothing — which (swallowed by 2>/dev/null) silently collapsed this whole
+    # detection to the /var/tmp fallback on every Ubuntu box. Capture df
+    # separately so a future incompatibility surfaces loudly instead of degrading
+    # silently.
+    local df_out
+    df_out="$(df -l --output=source,target,avail 2>/dev/null | tail -n +2)" || true
+    if [ -z "$df_out" ]; then
+        echo "distro-creative-scratch: df produced no usable output -- cannot detect mounts, falling back to /var/tmp" >&2
+        printf '%s\n' "/var/tmp"
+        return 0
     fi
 
     local best_path="" best_avail=-1 best_is_nvme=0
@@ -55,7 +69,7 @@ detect_best_mount() {
             best_avail="$avail"
             best_is_nvme="$is_nvme"
         fi
-    done < <(df -lP --output=source,target,avail 2>/dev/null | tail -n +2)
+    done <<< "$df_out"
 
     if [ -z "$best_path" ]; then
         echo "distro-creative-scratch: no non-rotational local mount found -- falling back to /var/tmp (rotational disk or undetectable storage)" >&2

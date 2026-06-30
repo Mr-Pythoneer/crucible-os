@@ -73,13 +73,17 @@ if not matches:
 print(json.dumps(matches[0]))
 ')" || exit 1
 
-        status="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-        name="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')"
+        # Use .get() with defaults, not raw [key] subscripts: a hand-added DB
+        # entry missing a key would otherwise raise KeyError and, under set -e,
+        # abort with a raw Python traceback BEFORE reaching the friendly
+        # empty-verbs / unknown-status guards below.
+        status="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))')"
+        name="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("name",""))')"
         notes="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("notes",""))')"
 
         case "$status" in
             workaround)
-                verbs="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["winetricks_verbs"]))')"
+                verbs="$(printf '%s' "$entry" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin).get("winetricks_verbs") or []))')"
                 if [ -z "$verbs" ]; then
                     echo "Entry '$id' is marked 'workaround' but lists no winetricks verbs -- see notes:"
                     echo "$notes"
