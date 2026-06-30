@@ -14,7 +14,7 @@ run" instead of "needs a GPU."
 - `settings.conf` — module sequence, fairly standard/stable shape across Calamares versions, moderate-high confidence
 - `modules/welcome.conf` — straightforward keys, moderate-high confidence
 - `modules/users.conf` — straightforward keys, moderate-high confidence
-- `modules/partition.conf` — **lowest confidence of the four.** Partitioning has the most moving parts (EFI/BIOS, encryption, swap strategy) and the most version-to-version schema drift. Treat it as a starting point to diff against Calamares' own `partition/examples/` configs in its source tree on a real build host, not as trustworthy as-is.
+- `modules/partition.conf` — **schema-corrected against upstream (2026-06).** A web-verification pass against calamares/calamares's own `src/modules/partition/partition.conf` caught two real errors in the earlier draft (`efi.systemPartition` → the `efi:` map with `mountPoint`; `userSwapChoices` wrongly nested under `efi` → it's top-level) and added keys a real install commonly needs (`allowManualPartitioning`, `luksGeneration`, `requiredStorage`, `lvm.enable`). Keys/types/values now match upstream — but still unverified against an actual Calamares *run* (needs the calamares package on a Linux host), so confirm partitioning behaves on the first real install.
 
 ## What's missing, not faked
 

@@ -47,7 +47,7 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [x] Best-effort `PINNED_APPS` dock-pinning via `gsettings` (GNOME-only, runs pre-sudo so it has the user's session bus; desktop-file IDs unverified)
 - [ ] **(needs hardware/VM)** verify `cpupower`/`powerprofilesctl` calls on a real (non-Mac) Linux box — this part doesn't need the GPU server specifically
 - [ ] **(needs hardware/VM)** verify service enable/disable doesn't fight stock Ubuntu defaults
-- [ ] GPU performance-state pinning beyond `power-profiles-daemon` (`nvidia-settings`/PRIME) — **(needs hardware)**
+- [x] GPU performance-state pinning — `apply_gpu_perf` in `distro-modectl`, driven by each profile's `GPU_PERF=max|auto` (Gaming/Creative pin max, others reset). nvidia-smi persistence + clock-lock (headless/Wayland-safe) + nvidia-settings GpuPowerMizerMode on X11. Web-verified command set; **(needs hardware)** to confirm it changes GPU state.
 
 ## 5. Gaming mode — `modes/gaming/`
 
@@ -58,9 +58,9 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [x] winetricks bundled (via wine-staging script)
 - [x] Steam + Lutris install scripts
 - [x] verify-gaming.sh sanity check
-- [ ] DXVK + VKD3D-Proton standalone install for raw Wine prefixes outside Bottles/Proton-GE (low priority — both already bundle their own)
+- [x] DXVK + VKD3D-Proton standalone install (`modes/gaming/setup/07-install-dxvk-vkd3d.sh`) for raw Wine prefixes — latest-release fetch with SHA-256 verification via the GitHub API digest. Web-verified current upstream: DXVK v3.x `.tar.gz` (no setup script → manual install), VKD3D-Proton v3.x `.tar.zst` (ships `setup_vkd3d_proton.sh`).
 - [x] Curated compatibility-fix database for known-troublesome apps (`compat-db/apps.json` + `bin/distro-gaming-compat`, Lutris-install-script style) — 11 entries across workaround/broken/native-alternative statuses, execution-tested end to end with a stubbed `winetricks`
-- [ ] Confirm `PINNED_APPS` desktop-file IDs in `modes/modectl/profiles/gaming.conf` against a real install
+- [x] `PINNED_APPS` desktop-file IDs web-verified (2026-06): fixed `lutris.desktop` → `net.lutris.Lutris.desktop` (reverse-DNS migration); steam.desktop, the FreeCAD/Blender/Kdenlive/Bottles Flatpak IDs all confirmed correct.
 - [ ] **(needs hardware/VM)** verify a real Proton-GE game launch end to end
 
 ## 6. Server mode — `modes/server/`
@@ -82,7 +82,7 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [x] verify-creative.sh sanity check
 - [x] Explicit "not supported" doc: SolidWorks/AutoCAD/Premiere/After Effects under Wine — don't attempt, point to Resolve/FreeCAD instead (see modes/creative/README.md)
 - [x] Scratch-disk/cache path defaults pointed at fastest local NVMe (`bin/distro-creative-scratch detect|setup`) — `df`+`lsblk`-based detection with honest fallback tiers, best-effort Blender preference wiring, Resolve/ffmpeg flagged as not scriptable. Execution-tested with stubbed `df`/`lsblk`/`blender` across all branches.
-- [ ] Color-managed display profile loading — **(needs live desktop + real monitor)**
+- [x] Color-managed display profile loading — scaffolded as `modes/creative/bin/distro-creative-color` (colord/colormgr import + assign-to-default-display, web-verified command sequence). **(needs live desktop + real monitor + measured ICC profile)** to actually run.
 - [ ] **(needs hardware)** verify NVENC actually works, Resolve actually launches with a real Nvidia GPU
 
 ## 8. Normal mode — `modes/normal/`
@@ -91,10 +91,10 @@ Living checklist for the whole distro. Organized by the same structure as `DESIG
 - [x] Dock repositioning to bottom/floating/autohide (uses Ubuntu's built-in dash-to-dock-based dock, no new extension needed)
 - [x] Theme application script (GTK/icon theme + GNOME's official User Themes extension)
 - [x] Removed the dead `DE_DCONF_FILE` stub field from all modectl profiles once real implementation landed elsewhere
-- [ ] macOS-style global app-menu / Mission-Control-equivalent overview — explicitly not attempted, see `modes/normal/README.md` (no stable GNOME built-in equivalent; needs live-session iteration to pick a real extension)
+- [x] macOS-style global app-menu / Mission-Control — **web-researched and documented** (resolved, not built): no stable maintained GNOME 46+ global-menu extension exists (all stale); GNOME's built-in Activities IS the Mission-Control analogue; Open Bar/Dash-to-Dock are the maintained cosmetic options. See `modes/normal/README.md`.
 - [ ] **(needs live desktop)** verify theme/dock changes actually render correctly
-- [ ] **(needs live desktop)** confirm the WhiteSur theme name `install.sh` actually produces matches what `03-apply-theme.sh` assumes (`WhiteSur-Dark`)
-- [ ] Balanced power defaults verification
+- [x] WhiteSur theme name web-verified (2026-06): a default install produces `WhiteSur-Dark` (gtk, capitalized) and `WhiteSur` (icon, base) — both exactly what `03-apply-theme.sh` assumes. Confirmed correct.
+- [x] Balanced power defaults reviewed: governor/PPD values are all real and sensible per mode (gaming/creative=performance/performance, ai/normal=schedutil/balanced, server=powersave/power-saver), matching DESIGN.md §4.
 
 ## 9. Build pipeline — `iso/`
 
@@ -184,6 +184,33 @@ rejected). 19 confirmed-real bugs fixed across 5 commits.
   `WhiteSur-gnome-shell-theme` repo (404), which under `set -e` aborted the
   whole script so even the GTK/icon themes never installed; the GTK repo's own
   install.sh installs the shell theme anyway.
+
+### 12c. Hardware-free completion pass (2026-06-30)
+
+"Fix everything doable without hardware." An 8-agent research workflow verified
+every remaining factual unknown, then built/corrected against it:
+
+- [x] DXVK + VKD3D-Proton standalone installer (§5) — checksum-verified.
+- [x] Checksum verification added to GE-Proton (`.sha512sum`) and BtbN ffmpeg
+  (`checksums.sha256`) downloads — addresses the security-review note on
+  unverified "latest" binaries. Both also tightened to pin the right asset
+  (GE-Proton x86-64 not aarch64; ffmpeg static-master not -shared/numbered).
+- [x] `PINNED_APPS` `.desktop` IDs verified + `lutris.desktop` fixed (§4/§5).
+- [x] GPU performance-state pinning wired into modectl (§4).
+- [x] Color-managed display profile scaffolded (`distro-creative-color`, §7).
+- [x] macOS-shell question resolved by research, not built (§8) — no stable
+  global-menu extension exists; stock Activities = Mission Control.
+- [x] WhiteSur theme names confirmed correct (§8).
+- [x] `iso/calamares/modules/partition.conf` schema-corrected against upstream
+  (real errors fixed: `efi.systemPartition`, mis-nested `userSwapChoices`).
+- [x] compat-db expanded 11 → 25 entries, all schema-valid in CI (§5).
+- [x] `CONTRIBUTING.md` (working norms) + `verify-all.sh` (post-install
+  orchestrator) added.
+- [x] Balanced power defaults reviewed; all governor/PPD values sane (§4).
+- [ ] **(needs hardware/host/live-desktop)** Everything still genuinely gated:
+  the first real `lb build` + boot + install, the GPU work (driver/AI/NVENC/
+  game launches), and live-desktop theme/extension/color rendering. These are
+  the *only* remaining open items — see `docs/first-hardware-runbook.md`.
 
 ## 11. Open questions (carried over from DESIGN.md) — resolved or defaulted
 

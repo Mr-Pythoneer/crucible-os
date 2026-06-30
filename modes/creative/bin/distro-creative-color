@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# Loads + assigns an ICC color profile to a display, for Creative mode's
+# color-managed workflow (DESIGN.md §4). Uses colord/colormgr (the
+# Wayland-friendly path on GNOME) — verified command sequence (2026-06), but
+# this CANNOT be fully tested without a real monitor + a measured .icc profile:
+# colord must be running, and the display device only exists in colord when
+# there's an actual connected screen in an X/Wayland session. So this is a
+# real, correct scaffold you run on your own machine against your own profile,
+# not something verifiable headless.
+#
+# Usage:
+#   distro-creative-color list                 -- show colord display devices + profiles
+#   distro-creative-color apply <profile.icc>  -- import + assign to the default display
+#   distro-creative-color apply <profile.icc> <device-object-path>  -- target a specific display
+
+set -euo pipefail
+
+if ! command -v colormgr >/dev/null 2>&1; then
+    echo "colormgr not found — install colord: sudo apt-get install -y colord" >&2
+    exit 1
+fi
+
+first_display_device() {
+    # colormgr prints object paths like /org/freedesktop/ColorManager/devices/xrandr_...
+    colormgr get-devices-by-kind display 2>/dev/null | awk '/Object Path:/{print $3; exit}'
+}
+
+case "${1:-}" in
+    list)
+        echo "== Display devices =="
+        colormgr get-devices-by-kind display || echo "(none — is colord running and a display connected?)"
+        ;;
+    apply)
+        ICC="${2:-}"
+        [ -n "$ICC" ] || { echo "Usage: $(basename "$0") apply <profile.icc> [device-object-path]" >&2; exit 1; }
+        [ -f "$ICC" ] || { echo "ICC profile not found: $ICC" >&2; exit 1; }
+
+        DEVICE="${3:-$(first_display_device)}"
+        if [ -z "$DEVICE" ]; then
+            echo "No colord display device found. This needs a real connected monitor in an" >&2
+            echo "X/Wayland session with colord running (systemctl --user status colord, or systemctl status colord)." >&2
+            exit 1
+        fi
+
+        echo "Importing $ICC ..."
+        colormgr import-profile "$ICC" >/dev/null
+
+        PROFILE=$(colormgr find-profile-by-filename "$ICC" 2>/dev/null | awk '/Object Path:/{print $3; exit}')
+        [ -n "$PROFILE" ] || { echo "Could not resolve the imported profile's object path." >&2; exit 1; }
+
+        echo "Assigning profile to display device:"
+        echo "  device:  $DEVICE"
+        echo "  profile: $PROFILE"
+        colormgr device-add-profile "$DEVICE" "$PROFILE" || true   # harmless if already added
+        colormgr device-make-profile-default "$DEVICE" "$PROFILE"
+        echo -e "\033[32mDone. The profile is now colord's default for that display.\033[0m"
+        echo "(If colors don't change, your compositor may need to re-read colord, or the panel"
+        echo " needs the VCGT calibration loaded — argyll's 'dispwin -L' can do that on X11.)"
+        ;;
+    *)
+        echo "Usage: $(basename "$0") list | apply <profile.icc> [device-object-path]" >&2
+        exit 1
+        ;;
+esac
