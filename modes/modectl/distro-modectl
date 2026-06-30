@@ -38,14 +38,26 @@ VALID_MODES=(gaming ai server creative normal)
 ASSUME_YES=false
 
 usage() {
-    echo "Usage: $(basename "$0") switch <${VALID_MODES[*]// /|}> [--yes] | status" >&2
+    # Join with IFS='|' in a subshell so the alternatives render as
+    # gaming|ai|... — a per-element ${arr[*]// /|} substitution does NOT do
+    # this (it only replaces spaces *inside* each element, then joins on the
+    # IFS space), so the array must actually be joined with '|'.
+    ( IFS='|'; echo "Usage: $(basename "$0") switch <${VALID_MODES[*]}> [--yes] | status" >&2 )
     exit 1
 }
 
 require_root_for() {
     if [ "$(id -u)" -ne 0 ]; then
         echo "Re-running with sudo for: $*" >&2
-        sudo "$0" "$@"
+        # Forward --yes across the sudo re-exec: the confirm block runs again
+        # on the root pass, and without this the re-exec drops --yes, so a
+        # non-interactive `switch server --yes` would abort on the second pass
+        # (defeating the whole point of the flag).
+        if [ "$ASSUME_YES" = "true" ]; then
+            sudo "$0" "$@" --yes
+        else
+            sudo "$0" "$@"
+        fi
         exit $?
     fi
 }
@@ -94,7 +106,10 @@ stop_ai_preset() {
 start_ai_preset() {
     local preset="$1"
     if command -v distro-ai-preset >/dev/null 2>&1; then
-        distro-ai-preset switch "$preset"
+        distro-ai-preset switch "$preset" || {
+            echo "WARNING: distro-ai-preset failed to start preset '$preset' — CPU/power/services are already set to this mode, but the AI server is NOT running. Check: journalctl -u crucible12@${preset}.service" >&2
+            return 1
+        }
     else
         echo "WARNING: distro-ai-preset not found — install modes/ai/bin/distro-ai-preset first to actually start the model server." >&2
     fi
@@ -167,14 +182,23 @@ do_switch() {
     if [ "${STOP_AI_PRESET:-false}" = "true" ]; then
         stop_ai_preset
     fi
+    # A failed AI-preset start must NOT abort before STATE_FILE is written —
+    # otherwise governor/power/services are already switched but `status` would
+    # still report the previous mode. Record state regardless, then exit
+    # non-zero at the end so the caller still sees the failure.
+    ai_start_ok=true
     if [ -n "${AI_AUTOSTART_PRESET:-}" ]; then
-        start_ai_preset "$AI_AUTOSTART_PRESET"
+        start_ai_preset "$AI_AUTOSTART_PRESET" || ai_start_ok=false
     fi
 
     mkdir -p "$(dirname "$STATE_FILE")"
     echo "$mode" > "$STATE_FILE"
 
     echo "Now in: $MODE_NAME mode"
+    if [ "$ai_start_ok" != "true" ]; then
+        echo "Mode reconfigured, but the AI preset did not start — see warning above." >&2
+        exit 1
+    fi
 }
 
 do_status() {

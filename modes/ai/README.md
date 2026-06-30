@@ -85,12 +85,17 @@ OpenClaw's gateway). Requires you to set `ANTHROPIC_API_KEY` yourself; the
 script refuses to proceed without it rather than failing silently later.
 
 `config/opencode.claude-cloud.json`'s env-var interpolation syntax
-(`"{env:ANTHROPIC_API_KEY}"`) is a guess based on common config patterns,
-**not verified against OpenCode's actual current config schema** — same
-honesty discipline as everything else here. If OpenCode doesn't pick up
-the key with that syntax, check OpenCode's own docs for the current
-mechanism and fix the JSON file. `distro-ai-cloud-toggle enable` prints
-this same caveat every time it runs so it's not forgotten.
+(`"{env:ANTHROPIC_API_KEY}"`) is **OpenCode's documented mechanism** —
+[OpenCode's config docs](https://opencode.ai/docs/config/) state "Use
+`{env:VARIABLE_NAME}` to substitute environment variables," with
+`"apiKey": "{env:ANTHROPIC_API_KEY}"` given as an example, and
+`"npm": "@ai-sdk/anthropic"` is the correct provider package per the
+models.dev registry OpenCode reads. (This was previously flagged as an
+unverified guess; a web-verification pass confirmed it, so the caveat is
+removed.) The one genuinely unverified part left is whether the literal
+model id `claude-sonnet-4-6` is currently served — OpenCode accepts any
+string as a model key, so it only matters at request time, not config-parse
+time.
 
 ## Status
 

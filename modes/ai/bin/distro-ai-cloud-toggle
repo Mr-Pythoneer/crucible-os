@@ -43,10 +43,8 @@ EOF
         echo "Confirming explicit opt-in: copying cloud config to $TARGET" >&2
         cp "$CLOUD_CONFIG" "$TARGET"
         echo "Done. OpenCode will use Claude (cloud) in this project until you switch back."
-        echo "Note: the env-var interpolation syntax in opencode.claude-cloud.json (\"{env:ANTHROPIC_API_KEY}\")"
-        echo "is based on common config patterns, NOT verified against OpenCode's actual current config schema --"
-        echo "if OpenCode rejects it or doesn't pick up the key, check OpenCode's docs for the current syntax"
-        echo "and fix opencode.claude-cloud.json accordingly (this is flagged in modes/ai/README.md too)."
+        echo "(The {env:ANTHROPIC_API_KEY} interpolation in opencode.claude-cloud.json is OpenCode's"
+        echo "documented env-var syntax; your key is read from the environment, never written to the file.)"
         ;;
     disable)
         echo "No state to tear down here (this script doesn't run a service)."

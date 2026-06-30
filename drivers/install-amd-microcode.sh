@@ -21,7 +21,7 @@ sudo apt-get update
 sudo apt-get install -y amd64-microcode
 
 echo -e "\033[36mChecking whether microcode was actually loaded this boot...\033[0m"
-if dmesg 2>/dev/null | grep -qi "microcode updated early"; then
+if dmesg 2>/dev/null | grep -qiE 'microcode: (Updated early|Current revision|Reload completed)'; then
     dmesg | grep -i microcode
     echo -e "\033[32mMicrocode loaded.\033[0m"
 elif command -v journalctl >/dev/null 2>&1 && journalctl -k -b 2>/dev/null | grep -qi microcode; then

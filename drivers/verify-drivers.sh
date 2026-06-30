@@ -27,7 +27,7 @@ fi
 
 echo -e "\n=== AMD microcode ==="
 check "amd64-microcode package installed" dpkg -s amd64-microcode
-if dmesg 2>/dev/null | grep -qi "microcode updated early" || (command -v journalctl >/dev/null 2>&1 && journalctl -k -b 2>/dev/null | grep -qi microcode); then
+if dmesg 2>/dev/null | grep -qiE 'microcode: (Updated early|Current revision|Reload completed)' || (command -v journalctl >/dev/null 2>&1 && journalctl -k -b 2>/dev/null | grep -qi microcode); then
     echo -e "\033[32m[PASS]\033[0m microcode loaded this boot"
     PASS=$((PASS + 1))
 else

@@ -11,6 +11,14 @@ RestartSec=5
 User=crucible12
 Group=crucible12
 
+# The run-*.sh presets pass --mlock to pin the multi-GB model in RAM. systemd
+# services default to RLIMIT_MEMLOCK=8MiB (DefaultLimitMEMLOCK), and because
+# this unit runs as an unprivileged User= with no CAP_IPC_LOCK it can't raise
+# that ceiling itself — so without this, --mlock silently degrades to a no-op
+# (llama.cpp logs an mlock warning and runs unpinned). LimitMEMLOCK sets
+# RLIMIT_MEMLOCK directly and is honored regardless of capabilities.
+LimitMEMLOCK=infinity
+
 # GPU/RAM headroom reservation while a preset is active is the mode-switcher's
 # job (cgroup/slice priority via distro-modectl), not this unit — see DESIGN.md §5/§4.
 
