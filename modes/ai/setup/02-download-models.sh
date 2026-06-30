@@ -45,6 +45,11 @@ for name in "${TARGETS[@]}"; do
     mkdir -p "$dest_dir"
 
     echo "Listing files matching '*${pattern}*.gguf' ..."
+    # .siblings[].rfilename lists EVERY file in the repo with its full relative
+    # path, including subfolders — so this correctly matches quants that live in
+    # a subfolder and/or are split into shards. (e.g. the "max" preset's
+    # UD-Q6_K_XL is UD-Q6_K_XL/...-00001-of-00003.gguf etc.; the download URL
+    # below preserves the subfolder, and run-max.sh finds the -00001 shard.)
     info_json=$(curl -fsSL -A "Crucible12-Setup" "https://huggingface.co/api/models/$repo")
     mapfile -t files < <(echo "$info_json" | jq -r '.siblings[].rfilename' | grep -i "$pattern" | grep -i '\.gguf$' || true)
 

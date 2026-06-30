@@ -22,13 +22,15 @@ echo -e "\033[36mChecking build dependencies...\033[0m"
 if ! command -v nvcc >/dev/null 2>&1; then
     echo -e "\033[33mCUDA toolkit (nvcc) not found on PATH.\033[0m"
     cat <<'EOF'
-Install the CUDA Toolkit first (12.8+ required for Blackwell/RTX 50-series, sm_120):
+Install the CUDA Toolkit first. 12.8 is the FIRST toolkit with Blackwell
+sm_120 support, so 12.8+ is required for the RTX 50-series. CUDA 13.x (current
+in 2026) also works and keeps sm_120 -- cuda-toolkit-12-8 is a known-good floor.
 
   Ubuntu (NVIDIA's official repo):
     wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
     sudo dpkg -i cuda-keyring_1.1-1_all.deb
     sudo apt-get update
-    sudo apt-get install -y cuda-toolkit-12-8
+    sudo apt-get install -y cuda-toolkit-12-8     # or a current cuda-toolkit-13-x
 
 Then re-run this script. (Not auto-installing this for you — it's a large,
 system-level package and you should review what's being added.)
