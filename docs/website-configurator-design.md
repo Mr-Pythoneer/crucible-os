@@ -1,8 +1,13 @@
-# Website download configurator — design note (DEFERRED)
+# Website download configurator — design note (BUILT 2026-07-01)
 
-Your idea, recorded so it's not lost. **Not built yet** — the focus right now is
-the single 5090/9950X3D/64GB build. This is the plan for the "pick your
-hardware → get a tailored build" download flow that comes later.
+**Status: shipped.** The "pick your GPU → see your tier + preloaded models" flow
+is live in `docs/index.html` (the `#configure` section) — an interactive,
+static, client-side widget. It maps a chosen GPU → effective VRAM → tier using
+the same thresholds as `distro-ai-detect-tier`, shows the headline models per
+use-case, and routes datacenter GPUs to Server mode. The prerequisites this note
+called out are all done: the six per-tier catalogs, the `--tier` flag, the
+`distro-ai-detect-tier` detector (multi-GPU pooling + datacenter guard), and the
+`distro-ai-setup` front door. The original design note follows.
 
 ## The idea
 

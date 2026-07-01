@@ -123,6 +123,27 @@
 
   .status-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
 
+  /* GPU -> tier configurator */
+  .cfg { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  .cfg-controls { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .cfg-controls label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; }
+  .cfg-controls select { width: 100%; background: var(--bg-card2); color: var(--text); border: 1px solid var(--border-hi); border-radius: 8px; padding: 11px 12px; font-size: 0.94rem; }
+  .cfg-hint { color: var(--text-faint); font-size: 0.8rem; margin-top: 13px; line-height: 1.55; }
+  .cfg-result { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; border-top: 3px solid var(--m-ai); }
+  .cfg-result.cfg-server { border-top-color: var(--warn); }
+  .tier-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .tier-badge { font-weight: 700; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 4px 13px; border-radius: 8px; background: var(--bg-card2); border: 1px solid var(--m-ai); color: var(--m-ai); }
+  .tier-head .vram { color: var(--text-dim); font-size: 0.9rem; }
+  .cfg-models { list-style: none; padding: 0; margin: 16px 0 0; }
+  .cfg-models li { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .cfg-models li:last-child { border-bottom: none; }
+  .cfg-models .k { color: var(--text-dim); white-space: nowrap; }
+  .cfg-models .v { color: var(--text); font-weight: 600; text-align: right; }
+  .cfg-cmd { margin-top: 16px; background: var(--bg-card2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.82rem; color: var(--text); overflow-x: auto; }
+  .cfg-cmd .prompt { color: var(--ok); }
+  .cfg-note { color: var(--text-faint); font-size: 0.8rem; margin-top: 14px; }
+  @media (max-width: 760px) { .cfg { grid-template-columns: 1fr; } }
+
   footer { padding: 44px 0 64px; color: var(--text-faint); font-size: 0.88rem; }
   footer a { color: var(--text-dim); text-decoration: underline; }
   footer .links { margin-top: 10px; display: flex; gap: 18px; flex-wrap: wrap; }
@@ -135,6 +156,7 @@
     <div class="brand"><img src="logo.png" alt="Crucible OS logo">Crucible OS</div>
     <div class="navlinks">
       <a href="#modes">Modes</a>
+      <a href="#configure">Configure</a>
       <a href="#strains">Strains</a>
       <a href="#promises">Promises</a>
       <a href="#status">Status</a>
@@ -149,9 +171,9 @@
     <h1>One Linux install.<br>Five <span>modes</span>.</h1>
     <p class="tagline">An Ubuntu-based distro that switches its whole personality on command — Gaming, AI, Server, Creative, or a polished Normal mode — built around local-first AI, not a cloud assistant bolted onto a browser.</p>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/Mr-Pythoneer/crucible-os">View the repo</a>
+      <a class="btn btn-primary" href="#configure">Configure your build</a>
+      <a class="btn btn-secondary" href="https://github.com/Mr-Pythoneer/crucible-os">View the repo</a>
       <a class="btn btn-secondary" href="https://github.com/Mr-Pythoneer/crucible-os/blob/main/TODO.md">Build checklist</a>
-      <a class="btn btn-secondary" href="https://github.com/Mr-Pythoneer/crucible-os/blob/main/DESIGN.md">Architecture plan</a>
     </div>
     <div class="terminal">
       <div class="bar">
@@ -163,7 +185,7 @@
         <div><span class="prompt">$</span> distro-modectl switch gaming</div>
         <div class="out">Switching to: Gaming mode<br>Now in: Gaming mode</div>
         <div><span class="prompt">$</span> distro-modectl switch ai</div>
-        <div class="out">Starting preset: crucible<br>Now running: crucible</div>
+        <div class="out">Switching to: AI mode<br>Detected tier: high (24GB) &rarr; Qwen2.5-Coder-32B<br>Now in: AI mode</div>
       </div>
     </div>
   </div>
@@ -180,7 +202,7 @@
       </div>
       <div class="mode-card" style="--mode-color: var(--m-ai)">
         <div class="icon-row"><i class="ti ti-brain" aria-hidden="true"></i><span class="value">AI</span></div>
-        <div class="role">Built around <a href="https://github.com/Mr-Pythoneer/Crucible12">Crucible12</a> — local llama.cpp + OpenCode, no API keys, no cloud, no usage limits.</div>
+        <div class="role">Local-first <a href="https://lmstudio.ai">LM Studio</a> (text + vision LLMs) + <a href="https://github.com/comfyanonymous/ComfyUI">ComfyUI</a> (image generation). No API keys, no cloud, no usage limits — models auto-sized to your GPU across six tiers.</div>
       </div>
       <div class="mode-card" style="--mode-color: var(--m-server)">
         <div class="icon-row"><i class="ti ti-server-2" aria-hidden="true"></i><span class="value">Server</span></div>
@@ -194,6 +216,21 @@
         <div class="icon-row"><i class="ti ti-layout-dashboard" aria-hidden="true"></i><span class="value">Normal</span></div>
         <div class="role">A polished, macOS-style default look — dock, theme, balanced power.</div>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="configure">
+  <div class="wrap">
+    <h2>Configure your build</h2>
+    <p class="sub">Crucible OS auto-detects your GPU on first boot and preloads the local AI models that fit it — so you never download a model your card can't run. Pick a GPU to preview exactly what you'd get. (Nothing downloads here; models are pulled on first boot by <code>distro-ai-setup&nbsp;--install</code>.)</p>
+    <div class="cfg">
+      <div class="cfg-controls">
+        <label for="gpu">Your GPU</label>
+        <select id="gpu" aria-label="Select your GPU"></select>
+        <div class="cfg-hint">VRAM is the binding constraint for local LLMs, so tiers are keyed on it. Two identical cards pool (2&times;48GB &rarr; 96GB); mixed vendors don't. Datacenter cards route to Server mode, not desktop AI.</div>
+      </div>
+      <div class="cfg-result" id="cfg-result" aria-live="polite"></div>
     </div>
   </div>
 </section>
@@ -222,7 +259,7 @@
         <div class="head"><i class="ti ti-circle-check" aria-hidden="true"></i>What's real</div>
         <ul>
           <li>Broad game/app compatibility via Proton-GE + Wine-staging + Bottles, pre-tuned out of the box</li>
-          <li>Fully local AI coding agent (Crucible12: llama.cpp + OpenCode), zero forced cloud round-trips</li>
+          <li>Fully local AI — LM Studio (LLMs) + ComfyUI (image gen), auto-sized to your GPU across six tiers, zero forced cloud round-trips</li>
           <li>Native CAD/video tools that actually work well on Linux today: FreeCAD, Blender, DaVinci Resolve</li>
           <li>Nvidia + AMD drivers preinstalled, Secure Boot handled, not ignored</li>
         </ul>
@@ -251,7 +288,7 @@
 
 <footer>
   <div class="wrap">
-    Built on Ubuntu 24.04 LTS · live-build · Calamares · <a href="https://github.com/Mr-Pythoneer/Crucible12">Crucible12</a> for local AI
+    Built on Ubuntu 24.04 LTS · live-build · Calamares · <a href="https://lmstudio.ai">LM Studio</a> + <a href="https://github.com/comfyanonymous/ComfyUI">ComfyUI</a> for local AI
     <div class="links">
       <a href="https://github.com/Mr-Pythoneer/crucible-os">github.com/Mr-Pythoneer/crucible-os</a>
       <a href="https://github.com/Mr-Pythoneer/crucible-os/blob/main/TODO.md">TODO.md</a>
@@ -259,6 +296,82 @@
     </div>
   </div>
 </footer>
+
+<script>
+(function () {
+  // Tier headline models — mirrors modes/ai/config/models.catalog.<tier>.json.
+  var TIERS = {
+    cpu:   { blurb: 'CPU inference — small (≤3B) quantized models. Slow but fully private.',
+             models: { Coding: 'Qwen2.5-Coder-3B', General: 'Qwen2.5-3B', Vision: 'Qwen2.5-VL-3B', 'Image gen': '— (needs a GPU)' } },
+    entry: { blurb: '7–8B models fit fully in VRAM.',
+             models: { Coding: 'Qwen2.5-Coder-7B', General: 'Llama-3.1-8B', Vision: 'Qwen2.5-VL-7B', 'Image gen': 'SDXL' } },
+    mid:   { blurb: '14B-class models, plus a 16B MoE coder.',
+             models: { Coding: 'Qwen2.5-Coder-14B', General: 'Qwen2.5-14B', Vision: 'Qwen2.5-VL-7B', 'Image gen': 'SDXL / FLUX.1-schnell' } },
+    high:  { blurb: '32B-class models fit fully in VRAM.',
+             models: { Coding: 'Qwen2.5-Coder-32B', General: 'Qwen2.5-32B', Vision: 'Qwen2.5-VL-32B', 'Image gen': 'FLUX.1-dev' } },
+    max:   { blurb: 'The RTX 5090 build — 70B runs with partial CPU offload to system RAM.',
+             models: { Coding: 'Qwen2.5-Coder-32B', General: 'Llama-3.3-70B (partial offload)', Vision: 'Qwen2.5-VL-32B', 'Image gen': 'FLUX.1-dev' } },
+    ultra: { blurb: 'Workstation cards — 70B runs FULLY in VRAM (no offload); 96GB unlocks 100B+ models.',
+             models: { Coding: 'Qwen2.5-Coder-32B', General: 'Llama-3.3-70B in VRAM · 104B/123B & gpt-oss-120B @96GB', Vision: 'Qwen2.5-VL-72B', 'Image gen': 'FLUX.1-dev' } }
+  };
+  // Representative GPUs, one per tier boundary. vram in GB (effective / pooled).
+  var GPUS = [
+    { g: '— none / integrated graphics (iGPU / APU) —', vram: 0 },
+    { g: 'GTX 1650 (4 GB)', vram: 4 },
+    { g: 'GTX 1660 · RTX 3050 · RX 6600 (6–8 GB)', vram: 8 },
+    { g: 'RTX 3060 12GB · 4060 Ti 16GB · 4070 · RX 6800 (12–16 GB)', vram: 16 },
+    { g: 'RTX 3090 · 4090 · RX 7900 XTX (24 GB)', vram: 24 },
+    { g: 'RTX 5090 (32 GB)', vram: 32 },
+    { g: 'RTX 6000 Ada · A6000 · Radeon PRO W7900 (48 GB)', vram: 48 },
+    { g: 'RTX PRO 6000 Blackwell (96 GB)', vram: 96 },
+    { g: '2× identical cards, pooled (e.g. 2× RTX 5090 = 64 GB)', vram: 64, pooled: true },
+    { g: 'H100 · H200 · B200 · MI300X (datacenter)', vram: 80, datacenter: true }
+  ];
+  // Same thresholds as distro-ai-detect-tier (GiB).
+  function tierFor(gb) {
+    if (gb < 5) return 'cpu';
+    if (gb < 11) return 'entry';
+    if (gb < 20) return 'mid';
+    if (gb < 30) return 'high';
+    if (gb < 45) return 'max';
+    return 'ultra';
+  }
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+  var sel = document.getElementById('gpu');
+  var res = document.getElementById('cfg-result');
+  if (!sel || !res) return;
+  GPUS.forEach(function (o, i) {
+    var opt = document.createElement('option');
+    opt.value = i; opt.textContent = o.g; sel.appendChild(opt);
+  });
+  function render() {
+    var o = GPUS[sel.value | 0];
+    if (o.datacenter) {
+      res.className = 'cfg-result cfg-server';
+      res.innerHTML =
+        '<div class="tier-head"><span class="tier-badge" style="border-color:var(--warn);color:var(--warn)">Server mode</span><span class="vram">datacenter GPU</span></div>' +
+        '<p style="margin:12px 0 0;color:var(--text-dim);font-size:0.92rem">Datacenter cards (H100 / H200 / B200 / MI300X…) are headless server silicon. Crucible OS routes them to <strong>Server mode</strong> — a headless serving path (lms&nbsp;CLI / vLLM) — not the desktop LM&nbsp;Studio GUI. A desktop chat UI is the wrong shape for a rack card.</p>' +
+        '<div class="cfg-cmd"><span class="prompt">$</span> distro-modectl switch server</div>';
+      return;
+    }
+    var t = tierFor(o.vram), T = TIERS[t];
+    var rows = Object.keys(T.models).map(function (k) {
+      return '<li><span class="k">' + esc(k) + '</span><span class="v">' + esc(T.models[k]) + '</span></li>';
+    }).join('');
+    var vramTxt = o.vram === 0 ? 'no dedicated VRAM' : (o.pooled ? '~' + o.vram + ' GB pooled' : o.vram + ' GB VRAM');
+    res.className = 'cfg-result';
+    res.innerHTML =
+      '<div class="tier-head"><span class="tier-badge">' + esc(t) + ' tier</span><span class="vram">' + esc(vramTxt) + '</span></div>' +
+      '<p style="margin:8px 0 0;color:var(--text-dim);font-size:0.9rem">' + esc(T.blurb) + '</p>' +
+      '<ul class="cfg-models">' + rows + '</ul>' +
+      '<div class="cfg-cmd"><span class="prompt">$</span> distro-ai-setup --install&nbsp;&nbsp;<span style="color:var(--text-faint)"># installs + preloads the ' + esc(t) + '-tier models</span></div>' +
+      '<div class="cfg-note">Auto-detected on first boot — or run it yourself. Full menu: <code>distro-ai-model list</code>.</div>';
+  }
+  sel.addEventListener('change', render);
+  sel.value = '5'; // default to the RTX 5090 (the current build)
+  render();
+})();
+</script>
 
 </body>
 </html>
