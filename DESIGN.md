@@ -108,12 +108,24 @@ Key verified facts that shaped the build (researched, not guessed):
   --gpu max|<ratio>`. The new `distro-ai-model` switches by use-case.
 - **Hardware tiers (2026-07-01):** every build preloads local models sized to
   its hardware. `distro-ai-detect-tier` auto-detects VRAM (Nvidia `nvidia-smi`,
-  AMD/APU sysfs), RAM, and laptop-vs-desktop, and maps VRAM → one of five tiers
+  AMD/APU sysfs), RAM, and laptop-vs-desktop, and maps VRAM → one of six tiers
   — `cpu` (≤3B, CPU-only) / `entry` (5–11GB) / `mid` (11–20GB) / `high`
-  (20–30GB) / `max` (≥30GB, the 5090). Each has its own quantized-GGUF catalog
-  `config/models.catalog.<tier>.json`. On laptops the user also picks a power
-  profile (efficiency/balance/power) selecting which variant loads by default;
-  image generation is opt-in at detect time. IDs/quants are web-verified.
+  (20–30GB) / `max` (30–45GB, the 5090) / `ultra` (≥45GB). Each has its own
+  quantized-GGUF catalog `config/models.catalog.<tier>.json`. On laptops the
+  user also picks a power profile (efficiency/balance/power) selecting which
+  variant loads by default; image generation is opt-in at detect time.
+  IDs/quants are web-verified.
+- **Enterprise/workstation GPUs (2026-07-01):** the `ultra` tier covers 48–96GB
+  workstation cards (RTX PRO 6000 96GB, RTX 6000 Ada / A6000 48GB, Radeon PRO
+  W7900 48GB, or 2× homogeneous cards pooled) — its win over `max` is running
+  70B/72B **fully in VRAM** (no CPU offload) at 48GB, plus 104B/123B dense and
+  gpt-oss-120B MoE resident at 96GB. Detection **sums** VRAM across homogeneous
+  same-model cards (LM Studio pools them via layer-split), never across mixed
+  vendors. True **datacenter** silicon (A100/H100/H200/B200/GB200, MI300X/MI325X,
+  Gaudi, Grace-ARM) is deliberately NOT a desktop tier — the detector routes it
+  to **Server mode** (headless `lms`/vLLM) instead of a desktop LM Studio GUI,
+  the honest product line for a local-first desktop distro. Backed by a verified
+  6-dimension GPU-landscape study.
 - **Llama-3.3-70B** (~42.5GB Q4) exceeds the 32GB 5090 → partial CPU offload,
   ~6–12 tok/s; everything else fits fully in VRAM.
 - The requested **Llama-3.2-Vision does NOT work in LM Studio** (llama.cpp has

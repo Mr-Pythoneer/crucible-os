@@ -25,11 +25,16 @@ set -euo pipefail
 SELF="${BASH_SOURCE[0]}"; [ -L "$SELF" ] && SELF="$(readlink "$SELF")"
 SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/crucible-ai"
-# Active AI-model tier (cpu/entry/mid/high/max) and laptop power profile
+# Active AI-model tier (cpu/entry/mid/high/max/ultra) and laptop power profile
 # (efficiency/balance/power). distro-ai-detect-tier writes these into
 # $CONFIG_HOME; override via env. Default tier=max (the 5090 build), balance.
 TIER="${CRUCIBLE_AI_TIER:-$(cat "$CONFIG_HOME/tier" 2>/dev/null || echo max)}"
 PROFILE="${CRUCIBLE_AI_PROFILE:-$(cat "$CONFIG_HOME/profile" 2>/dev/null || echo balance)}"
+# Effective (pooled) VRAM in MiB, written by distro-ai-detect-tier. Used to gate
+# models whose min_vram_gb exceeds what this box has (mainly the ultra tier's
+# 96GB-class entries). 0/empty = unknown -> no gating (back-compat).
+VRAM_MIB="${CRUCIBLE_VRAM_MIB:-$(cat "$CONFIG_HOME/vram_mib" 2>/dev/null || echo 0)}"
+[[ "$VRAM_MIB" =~ ^[0-9]+$ ]] || VRAM_MIB=0
 CATALOG="$SCRIPT_DIR/../config/models.catalog.$TIER.json"
 [ -f "$CATALOG" ] || CATALOG="$SCRIPT_DIR/../config/models.catalog.max.json"
 PORT=8080
@@ -44,29 +49,42 @@ need_lms() { [ -x "$LMS" ] || die "lms CLI not found ($LMS) — run modes/ai/set
 
 # catalog_query <python-expr-printing-output> — runs a python snippet with the
 # catalog loaded as `cat`. Args after the snippet are sys.argv[1:].
-catalog_py() { CATALOG="$CATALOG" PROFILE="$PROFILE" python3 -c "$1" "${@:2}"; }
+catalog_py() { CATALOG="$CATALOG" PROFILE="$PROFILE" VRAM_MIB="$VRAM_MIB" python3 -c "$1" "${@:2}"; }
 
 resolve_usecase_model() {  # <usecase> [variant] -> prints catalog id
     catalog_py '
 import json, os, sys
 cat = json.load(open(os.environ["CATALOG"]))
+models = cat["models"]
 uc_name = sys.argv[1]; variant = sys.argv[2] if len(sys.argv) > 2 else None
 uc = cat["use_cases"].get(uc_name)
 if not uc: print(f"error: unknown use-case: {uc_name}", file=sys.stderr); sys.exit(2)
+vram = int(os.environ.get("VRAM_MIB", "0") or 0)
+def fits(mid):
+    mv = models.get(mid, {}).get("min_vram_gb")
+    if not mv or vram <= 0: return True   # no requirement, or VRAM unknown -> allow
+    return mv * 1024 <= vram
 if variant:
+    # Explicit variant: honor it exactly (the user chose), no fit-filtering.
     mid = uc.get(variant)
     if not mid:
         have = [k for k in uc if k not in ("label", "runtime")]
         print("error: use-case {} has no variant {} (have: {})".format(uc_name, variant, have), file=sys.stderr); sys.exit(2)
 else:
-    # No explicit variant: pick by laptop power profile. power -> best;
-    # balance -> balanced then best; efficiency -> fast/smallest then best.
+    # No explicit variant: order by laptop power profile, then skip any whose
+    # min_vram_gb does not fit the detected VRAM (mainly ultra 96GB-class models).
     prof = os.environ.get("PROFILE", "balance")
     order = {"power": ["best"], "balance": ["balanced", "best"],
              "efficiency": ["fast", "balanced", "best"]}.get(prof, ["balanced", "best"])
-    mid = next((uc[k] for k in order if uc.get(k)), None) \
-          or next((v for k, v in uc.items() if k not in ("label", "runtime")), None)
-print(mid)
+    keys = [k for k in order if uc.get(k)]
+    for k in uc:
+        if k in ("label", "runtime") or k in keys: continue
+        keys.append(k)
+    cands = [uc[k] for k in keys]
+    mid = next((m for m in cands if fits(m)), None)
+    if mid is None:   # nothing fits -> smallest requirement, load_model will warn
+        mid = min(cands, key=lambda m: models.get(m, {}).get("min_vram_gb") or 0) if cands else None
+print(mid if mid else "")   # empty (not "None") so the caller guard catches it
 ' "$@"
 }
 
@@ -99,6 +117,14 @@ load_model() {  # <catalog-id>
     gpu="$(model_field "$id" gpu)"; [ -n "$gpu" ] || gpu="max"
     ctx="$(model_field "$id" context)"; [ -n "$ctx" ] || ctx="8192"
 
+    # Fit check: warn (don't block) if this model wants more VRAM than detected.
+    # Tolerate a float min_vram_gb (bash arithmetic is integer-only) by dropping
+    # any fractional part before comparing.
+    local minv; minv="$(model_field "$id" min_vram_gb)"; minv="${minv%%.*}"
+    if [[ "$minv" =~ ^[0-9]+$ ]] && [ "$VRAM_MIB" -gt 0 ] && [ "$(( minv * 1024 ))" -gt "$VRAM_MIB" ]; then
+        echo "WARNING: $id wants ~${minv}GB VRAM but only ~$(( VRAM_MIB / 1024 ))GB detected — it may OOM or spill to system RAM (slow). A lighter variant may fit better." >&2
+    fi
+
     ensure_server
     echo "Loading $id ($repo, --gpu $gpu, ctx $ctx) ..."
     "$LMS" unload --all >/dev/null 2>&1 || true   # one model at a time (VRAM)
@@ -112,8 +138,8 @@ load_model() {  # <catalog-id>
 
 case "${1:-}" in
     list)
-        echo "Active tier: $TIER   profile: $PROFILE   (catalog: $(basename "$CATALOG"))"
-        echo "Tiers: cpu entry mid high max  ·  set via distro-ai-detect-tier or \$CRUCIBLE_AI_TIER"
+        echo "Active tier: $TIER   profile: $PROFILE$([ "$VRAM_MIB" -gt 0 ] && echo "   VRAM: ~$(( VRAM_MIB / 1024 ))GB")   (catalog: $(basename "$CATALOG"))"
+        echo "Tiers: cpu entry mid high max ultra  ·  set via distro-ai-detect-tier or \$CRUCIBLE_AI_TIER"
         echo ""
         catalog_py '
 import json, os
@@ -158,7 +184,7 @@ for mid, m in cat["models"].items():
         ;;
     status)
         need_lms
-        echo "Active tier: $TIER   profile: $PROFILE   (catalog: $(basename "$CATALOG"))"
+        echo "Active tier: $TIER   profile: $PROFILE$([ "$VRAM_MIB" -gt 0 ] && echo "   VRAM: ~$(( VRAM_MIB / 1024 ))GB")   (catalog: $(basename "$CATALOG"))"
         "$LMS" server status 2>/dev/null || true
         echo "--- loaded models ---"
         "$LMS" ps 2>/dev/null || echo "(none / lms not running)"

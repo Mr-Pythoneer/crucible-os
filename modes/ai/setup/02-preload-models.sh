@@ -29,7 +29,7 @@ TIER=""
 if [ "${1:-}" = "--tier" ]; then TIER="${2:-}"; shift 2; fi
 [ -n "$TIER" ] || TIER="${CRUCIBLE_AI_TIER:-$(cat "$CONFIG_HOME/tier" 2>/dev/null || echo max)}"
 CATALOG="$SCRIPT_DIR/../config/models.catalog.$TIER.json"
-[ -f "$CATALOG" ] || { echo "No catalog for tier '$TIER' ($CATALOG). Tiers: cpu entry mid high max." >&2; exit 1; }
+[ -f "$CATALOG" ] || { echo "No catalog for tier '$TIER' ($CATALOG). Tiers: cpu entry mid high max ultra." >&2; exit 1; }
 echo "Tier: $TIER  ($CATALOG)"
 LMS="$HOME/.lmstudio/bin/lms"
 command -v "$LMS" >/dev/null 2>&1 || LMS="$(command -v lms || echo "$LMS")"

@@ -6,12 +6,19 @@
 #
 # What it detects (all cross-vendor, no root needed):
 #   VRAM  - Nvidia via nvidia-smi; AMD (and APU carveout) via
-#           /sys/class/drm/card*/device/mem_info_vram_total. Max across GPUs.
+#           /sys/class/drm/card*/device/mem_info_vram_total. MULTI-GPU: sums
+#           VRAM across HOMOGENEOUS same-name cards (LM Studio 0.4.15+ pools
+#           same-vendor cards via layer-split); mixed vendors are NOT pooled.
 #   RAM   - /proc/meminfo MemTotal.
 #   form  - laptop vs desktop via DMI chassis_type + battery presence.
 #
-# VRAM -> tier (GiB):  <5 cpu | 5-11 entry | 11-20 mid | 20-30 high | >=30 max
+# VRAM(GiB) -> tier:  <5 cpu | 5-11 entry | 11-20 mid | 20-30 high |
+#                     30-45 max (RTX 5090 32GB) | >=45 ultra (48-96GB workstation)
 #   (cpu tier = no usable dedicated GPU: CPU inference, <=3B models.)
+#   'ultra' = 48-96GB-class workstation cards (RTX PRO 6000 96GB, RTX 6000 Ada
+#   48GB, W7900 48GB, or 2x homogeneous pooled). DATACENTER GPUs
+#   (A100/H100/H200/B200/MI300X/Gaudi/Grace) are NOT a desktop tier — this
+#   routes them to Server mode's headless serving path instead.
 #
 # PROFILE (which catalog variant distro-ai-model loads by default):
 #   desktop -> power (best models). laptop -> you choose:
@@ -20,15 +27,16 @@
 # IMAGE (which ComfyUI image model to preload): you pick from what the tier
 #   supports, or none.
 #
-# Detection inputs are overridable by env (CRUCIBLE_VRAM_MIB, CRUCIBLE_IS_LAPTOP,
-# CRUCIBLE_RAM_MB, NVIDIA_SMI, SYS_DRM_ROOT, SYS_DMI_CHASSIS, SYS_POWER_ROOT,
+# Detection inputs are overridable by env (CRUCIBLE_VRAM_MIB, CRUCIBLE_GPU_LIST
+# ["mib:name;mib:name"], CRUCIBLE_IS_LAPTOP, CRUCIBLE_RAM_MB, CRUCIBLE_ALLOW_
+# DATACENTER, NVIDIA_SMI, SYS_DRM_ROOT, SYS_DMI_CHASSIS, SYS_POWER_ROOT,
 # PROC_MEMINFO) so this is testable without the real hardware.
 #
 # Usage:
 #   distro-ai-detect-tier                 # detect; ask (laptop profile + image) if a TTY; write config
 #   distro-ai-detect-tier --print         # detect + print only; write nothing, ask nothing
 #   distro-ai-detect-tier --yes           # detect + write with defaults; ask nothing (setup wizard / non-TTY)
-#   distro-ai-detect-tier --tier mid --profile efficiency --image sdxl   # force any field
+#   distro-ai-detect-tier --tier ultra --profile power --image flux-dev   # force any field
 
 set -euo pipefail
 
@@ -50,7 +58,7 @@ while [ $# -gt 0 ]; do
         --profile) FORCE_PROFILE="${2:-}"; shift ;;
         --image)   FORCE_IMAGE="${2:-}"; shift ;;
         -h|--help)
-            sed -n '2,32p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
+            sed -n '2,40p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown arg: $1 (see --help)" >&2; exit 1 ;;
     esac
     shift
@@ -58,28 +66,92 @@ done
 # Default: ask only when connected to a terminal.
 [ -n "$DO_ASK" ] || { [ -t 0 ] && [ -t 1 ] && DO_ASK=1 || DO_ASK=0; }
 
-valid_tier()    { case "$1" in cpu|entry|mid|high|max) return 0;; *) return 1;; esac; }
+valid_tier()    { case "$1" in cpu|entry|mid|high|max|ultra) return 0;; *) return 1;; esac; }
 valid_profile() { case "$1" in efficiency|balance|power) return 0;; *) return 1;; esac; }
 
-# ---- hardware detection (all inputs env-overridable) -------------------------
-detect_vram_mib() {
-    if [ -n "${CRUCIBLE_VRAM_MIB:-}" ]; then echo "$CRUCIBLE_VRAM_MIB"; return; fi
-    local best=0 v smi f bytes mib
-    smi="${NVIDIA_SMI:-nvidia-smi}"
+# ---- GPU enumeration (all inputs env-overridable) ----------------------------
+# gather_gpus -> prints "<mib>\t<name>" per detected GPU (Nvidia then AMD).
+gather_gpus() {
+    if [ -n "${CRUCIBLE_GPU_LIST:-}" ]; then
+        # test/override form: "mib:name;mib:name". Split on ';' then first ':'.
+        local IFS=';' pair
+        for pair in $CRUCIBLE_GPU_LIST; do
+            [ -n "$pair" ] || continue
+            printf '%s\t%s\n' "${pair%%:*}" "${pair#*:}"
+        done
+        return
+    fi
+    local smi="${NVIDIA_SMI:-nvidia-smi}" line mem name f bytes mib
     if command -v "$smi" >/dev/null 2>&1; then
-        while read -r v; do
-            [[ "$v" =~ ^[0-9]+$ ]] || continue
-            if [ "$v" -gt "$best" ]; then best="$v"; fi
-        done < <("$smi" --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null || true)
+        # "32607, NVIDIA GeForce RTX 5090"
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            mem="${line%%,*}"; name="${line#*, }"
+            mem="${mem// /}"
+            [[ "$mem" =~ ^[0-9]+$ ]] || continue
+            printf '%s\t%s\n' "$mem" "$name"
+        done < <("$smi" --query-gpu=memory.total,name --format=csv,noheader,nounits 2>/dev/null || true)
     fi
     for f in "${SYS_DRM_ROOT:-/sys/class/drm}"/card*/device/mem_info_vram_total; do
         [ -r "$f" ] || continue
         bytes="$(cat "$f" 2>/dev/null || echo 0)"
         [[ "$bytes" =~ ^[0-9]+$ ]] || continue
         mib=$(( bytes / 1048576 ))
-        if [ "$mib" -gt "$best" ]; then best="$mib"; fi
+        printf '%s\tAMD GPU\n' "$mib"
     done
-    echo "$best"
+}
+
+# classify a GPU name: datacenter | nvl | consumer
+# Datacenter substrings are matched FIRST; only H100/H200 NVL (the air-cooled
+# single-card-in-a-workstation edge case) is downgraded to 'nvl' (allow-with-
+# warning). Everything else datacenter -> 'datacenter' (hard Server-mode route).
+# Order matters: a top-level *nvl* match would wrongly whitelist A100 NVL /
+# "HGX B200 NVL72" and defeat the guard.
+classify_gpu() {
+    local n; n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    # Note: *b100*/*b200* also match GB100/GB200 (Grace-Blackwell) by substring.
+    case "$n" in
+        *a100*|*a800*|*h100*|*h200*|*h800*|*b100*|*b200*|\
+        *mi250*|*mi300*|*mi325*|*mi350*|*"data center gpu max"*|*gaudi*|*grace*)
+            case "$n" in
+                *h100*nvl*|*nvl*h100*|*h200*nvl*|*nvl*h200*) echo nvl; return ;;
+            esac
+            echo datacenter; return ;;
+    esac
+    echo consumer
+}
+
+# compute_vram: reads "<mib>\t<name>" lines on stdin, prints "<pooled>\t<single>\t<count>".
+# pooled = largest sum over a HOMOGENEOUS same-name group (LM Studio pools those);
+# single = largest single card; count = number of GPUs in the winning group.
+# NOTE: uses `python3 -c` (not a heredoc) so the piped GPU list stays on stdin —
+# a `python3 - <<HEREDOC` would make the heredoc itself python's stdin.
+compute_vram() {
+    python3 -c '
+import sys
+from collections import defaultdict
+groups = defaultdict(lambda: [0, 0])  # name -> [sum_mib, count]
+single = 0
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line.strip():
+        continue
+    parts = line.split("\t")
+    try:
+        mib = int(parts[0])
+    except (ValueError, IndexError):
+        continue
+    name = parts[1] if len(parts) > 1 and parts[1] else "GPU"
+    groups[name][0] += mib
+    groups[name][1] += 1
+    single = max(single, mib)
+if groups:
+    win = max(groups.values(), key=lambda v: v[0])
+    pooled, count = win
+else:
+    pooled, count = 0, 0
+print("%d\t%d\t%d" % (pooled, single, count))
+'
 }
 
 detect_is_laptop() {
@@ -103,32 +175,19 @@ detect_ram_mb() {
     echo $(( kb / 1024 ))
 }
 
-detect_gpu_desc() {
-    local smi="${NVIDIA_SMI:-nvidia-smi}" name f
-    if command -v "$smi" >/dev/null 2>&1; then
-        name="$("$smi" --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || true)"
-        [ -n "$name" ] && { echo "$name"; return; }
-    fi
-    for f in "${SYS_DRM_ROOT:-/sys/class/drm}"/card*/device/mem_info_vram_total; do
-        [ -r "$f" ] && { echo "AMD GPU (sysfs)"; return; }
-    done
-    echo "no dedicated GPU (integrated / CPU)"
-}
-
 tier_for_vram() {  # <vram_mib> -> tier
     local v="$1"
     if   [ "$v" -lt 5120 ];  then echo cpu
     elif [ "$v" -lt 11264 ]; then echo entry
     elif [ "$v" -lt 20480 ]; then echo mid
     elif [ "$v" -lt 30720 ]; then echo high
-    else echo max; fi
+    elif [ "$v" -lt 46080 ]; then echo max     # 30-45GB: RTX 5090 32GB class
+    else echo ultra; fi                          # >=45GB: 48-96GB workstation (or 2x pooled)
 }
 
 # ---- catalog helpers ---------------------------------------------------------
 catalog_for() { echo "$SCRIPT_DIR/../config/models.catalog.$1.json"; }
 
-# image_tokens <tier> -> prints "token<TAB>label" per supported image model + none.
-# Maps catalog model id -> download token understood by 04-download-image-models.sh.
 image_tokens() {
     CATALOG="$(catalog_for "$1")" python3 - <<'PY'
 import json, os
@@ -152,7 +211,6 @@ print("none\tNo image generation")
 PY
 }
 
-# default image token for a tier = token of the image use-case's "best", else none.
 default_image_token() {
     CATALOG="$(catalog_for "$1")" python3 - <<'PY'
 import json, os
@@ -167,16 +225,63 @@ print(tokmap.get(best, "none"))
 PY
 }
 
-# ---- run detection -----------------------------------------------------------
-VRAM_MIB="$(detect_vram_mib)"
+c()  { printf '\033[%sm%s\033[0m' "$1" "$2"; }      # inline (no newline)
+cl() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }    # whole colored line
+
+# ---- enumerate GPUs + datacenter guard ---------------------------------------
+GPU_LINES="$(gather_gpus)"
+# First line's name field, via parameter expansion (no printf|head pipe, which
+# can SIGPIPE-abort under set -e/pipefail).
+_first_gpu="${GPU_LINES%%$'\n'*}"
+GPU_DESC="${_first_gpu#*$'\t'}"
+[ -n "$GPU_DESC" ] || GPU_DESC="no dedicated GPU (integrated / CPU)"
+
+# Datacenter/headless silicon is Server-mode territory, not a desktop AI tier.
+# Skip the guard if the user forced a tier or explicitly allowed datacenter.
+if [ -z "${CRUCIBLE_ALLOW_DATACENTER:-}" ] && [ -z "$FORCE_TIER" ] && [ -n "$GPU_LINES" ]; then
+    dc_hit=""; nvl_warn=""
+    while IFS=$'\t' read -r _mib _name; do
+        [ -n "${_name:-}" ] || continue
+        case "$(classify_gpu "$_name")" in
+            datacenter) dc_hit="$_name" ;;
+            nvl)        nvl_warn="$_name" ;;
+        esac
+    done <<< "$GPU_LINES"
+    if [ -n "$dc_hit" ]; then
+        cl 33 "Detected server-class hardware: $dc_hit"
+        echo "Crucible OS AI mode is a local-first DESKTOP experience (LM Studio GUI + ComfyUI)."
+        echo "Datacenter GPUs belong in Server mode's headless serving path (lms CLI / vLLM),"
+        echo "not a desktop AI tier — a desktop chat GUI is the wrong shape for this hardware."
+        echo ""
+        echo "  -> Use Server mode:   distro-modectl switch server"
+        echo "  -> Force a desktop tier anyway:  distro-ai-detect-tier --tier ultra"
+        echo "     (or export CRUCIBLE_ALLOW_DATACENTER=1)"
+        exit 3
+    fi
+    if [ -n "$nvl_warn" ]; then
+        cl 33 "Note: $nvl_warn is an NVL datacenter card in a workstation — allowed as a desktop 'ultra' tier,"
+        echo "but it still needs the datacenter driver branch. Consider Server mode for headless serving."
+    fi
+fi
+
+# ---- effective VRAM (multi-GPU homogeneous pool) -----------------------------
+POOLED=0; SINGLE=0; GPU_COUNT=0
+if [ -n "$GPU_LINES" ]; then
+    IFS=$'\t' read -r POOLED SINGLE GPU_COUNT <<< "$(printf '%s\n' "$GPU_LINES" | compute_vram)"
+fi
+# Explicit override forces the VRAM figure used for tiering.
+if [ -n "${CRUCIBLE_VRAM_MIB:-}" ]; then
+    [[ "$CRUCIBLE_VRAM_MIB" =~ ^[0-9]+$ ]] || { echo "CRUCIBLE_VRAM_MIB must be an integer (MiB), got '$CRUCIBLE_VRAM_MIB'." >&2; exit 1; }
+    POOLED="$CRUCIBLE_VRAM_MIB"; SINGLE="$CRUCIBLE_VRAM_MIB"; GPU_COUNT=1
+fi
+VRAM_MIB="$POOLED"
 IS_LAPTOP="$(detect_is_laptop)"
 RAM_MB="$(detect_ram_mb)"
-GPU_DESC="$(detect_gpu_desc)"
 VRAM_GIB="$(python3 -c "print(round($VRAM_MIB/1024, 1))")"
 RAM_GIB="$(python3 -c "print(round($RAM_MB/1024, 1))")"
 
 TIER="${FORCE_TIER:-$(tier_for_vram "$VRAM_MIB")}"
-valid_tier "$TIER" || { echo "Invalid --tier '$TIER' (cpu entry mid high max)." >&2; exit 1; }
+valid_tier "$TIER" || { echo "Invalid --tier '$TIER' (cpu entry mid high max ultra)." >&2; exit 1; }
 
 if [ -n "$FORCE_PROFILE" ]; then
     PROFILE="$FORCE_PROFILE"
@@ -190,11 +295,14 @@ valid_profile "$PROFILE" || { echo "Invalid --profile '$PROFILE' (efficiency bal
 IMAGE="${FORCE_IMAGE:-$(default_image_token "$TIER")}"
 
 # ---- report ------------------------------------------------------------------
-c()  { printf '\033[%sm%s\033[0m' "$1" "$2"; }      # inline (no newline)
-cl() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }    # whole colored line
 cl 36 '== Crucible AI hardware detection =='
 printf '  %-14s %s\n' "GPU:"    "$GPU_DESC"
-printf '  %-14s %s GiB (%s MiB)\n' "VRAM:" "$VRAM_GIB" "$VRAM_MIB"
+if [ "${GPU_COUNT:-0}" -gt 1 ]; then
+    printf '  %-14s %s GiB pooled across %s x %s (%s MiB); largest single %s MiB\n' \
+        "VRAM:" "$VRAM_GIB" "$GPU_COUNT" "$GPU_DESC" "$VRAM_MIB" "$SINGLE"
+else
+    printf '  %-14s %s GiB (%s MiB)\n' "VRAM:" "$VRAM_GIB" "$VRAM_MIB"
+fi
 printf '  %-14s %s GiB\n' "RAM:"  "$RAM_GIB"
 printf '  %-14s %s\n' "Form factor:" "$([ "$IS_LAPTOP" = 1 ] && echo laptop || echo desktop)"
 printf '  %-14s %s\n' "-> Tier:"  "$(c 32 "$TIER")"
@@ -206,6 +314,9 @@ fi
 if [ "$TIER" = "cpu" ]; then
     cl 33 'No usable dedicated VRAM detected -> cpu tier (CPU inference, no image generation).'
     echo "If you DO have a discrete GPU we missed (e.g. Intel Arc), rerun: distro-ai-detect-tier --tier entry|mid|high|max"
+fi
+if [ "$TIER" = "ultra" ]; then
+    cl 32 "Ultra tier: 70B runs FULLY in VRAM (no CPU offload). 96GB+ also unlocks 104B/123B and gpt-oss-120B."
 fi
 
 # ---- interactive choices -----------------------------------------------------
@@ -228,7 +339,6 @@ ask_profile() {
 ask_image() {
     [ -n "$FORCE_IMAGE" ] && return 0
     local rows=(); mapfile -t rows < <(image_tokens "$TIER")
-    # cpu tier / no image support -> only "none"; nothing to ask.
     if [ "${#rows[@]}" -le 1 ]; then IMAGE="none"; return 0; fi
     cl 36 'Image generation (pick one to preload, runs in ComfyUI):'
     local i=1 tok lbl
@@ -254,13 +364,16 @@ printf '  %-14s %s\n' "Image gen:" "$(c 32 "$IMAGE")"
 # ---- persist -----------------------------------------------------------------
 if [ "$DO_WRITE" = "1" ]; then
     mkdir -p "$CONFIG_HOME"
-    printf '%s\n' "$TIER"    > "$CONFIG_HOME/tier"
-    printf '%s\n' "$PROFILE" > "$CONFIG_HOME/profile"
-    printf '%s\n' "$IMAGE"   > "$CONFIG_HOME/image"
+    printf '%s\n' "$TIER"     > "$CONFIG_HOME/tier"
+    printf '%s\n' "$PROFILE"  > "$CONFIG_HOME/profile"
+    printf '%s\n' "$IMAGE"    > "$CONFIG_HOME/image"
+    printf '%s\n' "$VRAM_MIB" > "$CONFIG_HOME/vram_mib"
     {
         echo "# Written by distro-ai-detect-tier"
         echo "gpu=$GPU_DESC"
+        echo "gpu_count=$GPU_COUNT"
         echo "vram_mib=$VRAM_MIB"
+        echo "vram_single_mib=$SINGLE"
         echo "ram_mb=$RAM_MB"
         echo "is_laptop=$IS_LAPTOP"
         echo "tier=$TIER"
@@ -268,7 +381,7 @@ if [ "$DO_WRITE" = "1" ]; then
         echo "image=$IMAGE"
     } > "$CONFIG_HOME/detected"
     echo ""
-    cl 32 "Wrote $CONFIG_HOME/{tier,profile,image}."
+    cl 32 "Wrote $CONFIG_HOME/{tier,profile,image,vram_mib}."
     echo "Next: preload the models for this tier ->"
     echo "  modes/ai/setup/02-preload-models.sh          # all $TIER-tier LLMs"
     if [ "$IMAGE" != "none" ]; then

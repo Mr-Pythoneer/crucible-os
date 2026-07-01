@@ -111,5 +111,75 @@ assert_contains "04 reads image=flux-dev from config" "$out" "image=flux-dev"
 assert_eq "04 fails cleanly when ComfyUI is absent" "1" "$rc"
 rm -rf "$cfg" "$home"
 
+# --- ultra tier threshold + image default ---
+check_tier "vram 46079 -> max"        46079  max
+check_tier "vram 46080 -> ultra"      46080  ultra
+check_tier "vram 49140 (48GB) -> ultra" 49140 ultra
+check_tier "vram 98304 (96GB) -> ultra" 98304 ultra
+check_image "ultra tier -> flux-dev"  49140  flux-dev
+
+# --- multi-GPU homogeneous pooling (sum same-name group, not max) ---
+gpu_case() {  # desc  gpu_list  ram_mb  expect_tier  expect_vram_mib
+  local cfg; cfg="$(new_stubdir)"
+  XDG_CONFIG_HOME="$cfg" CRUCIBLE_GPU_LIST="$2" CRUCIBLE_IS_LAPTOP=0 CRUCIBLE_RAM_MB="$3" \
+    NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --yes >/dev/null 2>&1
+  assert_eq "$1 (tier)" "$4" "$(cat "$cfg/crucible-ai/tier" 2>/dev/null || echo MISSING)"
+  [ -n "$5" ] && assert_eq "$1 (vram_mib)" "$5" "$(cat "$cfg/crucible-ai/vram_mib" 2>/dev/null || echo MISSING)"
+  rm -rf "$cfg"
+}
+gpu_case "single 48GB workstation -> ultra"      "49140:NVIDIA RTX 6000 Ada Generation" 131072 ultra 49140
+gpu_case "2x48GB same model pooled -> 96GB ultra" "49140:NVIDIA RTX 6000 Ada Generation;49140:NVIDIA RTX 6000 Ada Generation" 262144 ultra 98280
+gpu_case "2x RTX 5090 pooled 64GB -> ultra"      "32607:NVIDIA GeForce RTX 5090;32607:NVIDIA GeForce RTX 5090" 131072 ultra 65214
+gpu_case "single RTX 5090 -> stays max"          "32607:NVIDIA GeForce RTX 5090" 65536 max 32607
+# mixed-vendor: the tier assert alone is non-distinguishing (a broken cross-group
+# sum -> 73700 MiB would ALSO be ultra); the vram_mib assert (49140, not 73700) is
+# the real guard that homogeneous grouping did not pool across vendors.
+gpu_case "mixed vendor NOT pooled (largest group)" "49140:NVIDIA RTX 6000 Ada;24560:AMD Radeon RX 7900 XTX" 131072 ultra 49140
+
+# --- datacenter guard -> Server mode ---
+out="$(XDG_CONFIG_HOME="$(new_stubdir)" CRUCIBLE_GPU_LIST="81559:NVIDIA H100 80GB HBM3" NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --print 2>&1)"; rc=$?
+assert_eq "H100 datacenter guard exits 3" "3" "$rc"
+assert_contains "H100 guard names Server mode" "$out" "Server mode"
+assert_contains "H100 guard names distro-modectl" "$out" "distro-modectl switch server"
+
+out="$(XDG_CONFIG_HOME="$(new_stubdir)" CRUCIBLE_GPU_LIST="196608:AMD Instinct MI300X" NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --print 2>&1)"; rc=$?
+assert_eq "MI300X datacenter guard exits 3" "3" "$rc"
+
+# regression (review #1): a datacenter card with "NVL" in the name must NOT bypass
+# the guard just because of the NVL substring. Only H100/H200 NVL are downgraded.
+out="$(XDG_CONFIG_HOME="$(new_stubdir)" CRUCIBLE_GPU_LIST="81920:NVIDIA A100 NVL" NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --print 2>&1)"; rc=$?
+assert_eq "A100 NVL still hits datacenter guard (exit 3)" "3" "$rc"
+out="$(XDG_CONFIG_HOME="$(new_stubdir)" CRUCIBLE_GPU_LIST="196608:NVIDIA HGX B200 NVL72" NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --print 2>&1)"; rc=$?
+assert_eq "HGX B200 NVL72 still hits datacenter guard (exit 3)" "3" "$rc"
+
+# non-numeric CRUCIBLE_VRAM_MIB is rejected cleanly (review #6), not a py traceback
+out="$(XDG_CONFIG_HOME="$(new_stubdir)" CRUCIBLE_VRAM_MIB=lots "$DET" --print 2>&1)"; rc=$?
+assert_eq "non-numeric CRUCIBLE_VRAM_MIB exits 1" "1" "$rc"
+assert_contains "non-numeric CRUCIBLE_VRAM_MIB explains" "$out" "must be an integer"
+assert_not_contains "non-numeric CRUCIBLE_VRAM_MIB: no py traceback" "$out" "Traceback"
+
+# --tier override bypasses the guard (user's explicit call)
+cfg="$(new_stubdir)"
+XDG_CONFIG_HOME="$cfg" CRUCIBLE_GPU_LIST="81559:NVIDIA H100 80GB HBM3" CRUCIBLE_RAM_MB=524288 \
+  NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --yes --tier ultra >/dev/null 2>&1
+assert_eq "H100 + --tier ultra bypasses guard" "ultra" "$(cat "$cfg/crucible-ai/tier" 2>/dev/null || echo MISSING)"
+rm -rf "$cfg"
+
+# CRUCIBLE_ALLOW_DATACENTER=1 bypasses the guard, tiers by VRAM
+cfg="$(new_stubdir)"
+XDG_CONFIG_HOME="$cfg" CRUCIBLE_GPU_LIST="81559:NVIDIA H100 80GB HBM3" CRUCIBLE_ALLOW_DATACENTER=1 CRUCIBLE_RAM_MB=524288 \
+  NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --yes >/dev/null 2>&1
+assert_eq "ALLOW_DATACENTER bypasses guard -> ultra" "ultra" "$(cat "$cfg/crucible-ai/tier" 2>/dev/null || echo MISSING)"
+rm -rf "$cfg"
+
+# NVL datacenter-in-workstation is allowed-with-warning (continues, does not exit 3)
+cfg="$(new_stubdir)"
+out="$(XDG_CONFIG_HOME="$cfg" CRUCIBLE_GPU_LIST="143771:NVIDIA H200 NVL" CRUCIBLE_RAM_MB=262144 \
+  NVIDIA_SMI=/nonexistent-smi SYS_DRM_ROOT="$empty" "$DET" --yes 2>&1)"; rc=$?
+assert_eq "H200 NVL allowed (exit 0)" "0" "$rc"
+assert_eq "H200 NVL -> ultra tier" "ultra" "$(cat "$cfg/crucible-ai/tier" 2>/dev/null || echo MISSING)"
+assert_contains "H200 NVL warns about NVL" "$out" "NVL"
+rm -rf "$cfg"
+
 rm -rf "$empty"
 finish

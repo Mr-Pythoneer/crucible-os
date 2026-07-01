@@ -47,13 +47,28 @@ RAM, and laptop-vs-desktop, then maps VRAM → a tier. Each tier has its own
 | `entry` | 5–11 | GTX 1660, RTX 3050/3060 | 7–8B | SDXL |
 | `mid` | 11–20 | RTX 3060 12G, 4060 Ti 16G, 4070 | 14B (+16B MoE) | SDXL / FLUX.1-schnell |
 | `high` | 20–30 | RTX 3090/4090, 7900 XTX | 32B | FLUX.1-dev |
-| `max` | ≥30 | RTX 5090 | 70B (partial offload) | FLUX.1-dev |
+| `max` | 30–45 | RTX 5090 (32GB) | 70B (partial CPU offload) | FLUX.1-dev |
+| `ultra` | ≥45 | RTX PRO 6000 96G, RTX 6000 Ada 48G, W7900 48G, 2× pooled | 70B **fully in VRAM**; 96G → 104B/123B + gpt-oss-120B | FLUX.1-dev |
 
 On a **laptop** you also pick a power **profile** — `efficiency` (fast/small
 models, least battery) / `balance` / `power` (same as a desktop). The profile
 decides which variant `distro-ai-model use <case>` loads by default; desktops
 default to `power`. Override anything: `CRUCIBLE_AI_TIER=mid`,
 `CRUCIBLE_AI_PROFILE=efficiency`, or `distro-ai-detect-tier --tier high`.
+
+**Multi-GPU:** `distro-ai-detect-tier` **sums** VRAM across *homogeneous
+same-model* cards (LM Studio 0.4.15+ pools them via layer-split), so 2×48GB → a
+96GB `ultra`. Mixed vendors are **not** pooled. The `ultra` tier's 96GB-class
+models (gpt-oss-120B, Mistral-Large-123B, Command-R+ 104B) carry a `min_vram_gb`,
+so on a 48GB card `use <case>` auto-falls-back to a fitting variant; an explicit
+`use <case> <variant>` that won't fit still loads but warns.
+
+**Datacenter GPUs are Server-mode, not a desktop tier.** On an
+A100/H100/H200/B200/GB200/MI300X/Gaudi/Grace card, `distro-ai-detect-tier` stops
+and points you to `distro-modectl switch server` (headless `lms`/vLLM) rather
+than a desktop LM Studio GUI — the honest shape for that hardware. An H100/H200
+**NVL** card in a workstation is allowed-with-warning. Force the desktop path
+with `--tier ultra` or `CRUCIBLE_ALLOW_DATACENTER=1`.
 
 Then load a model and use it:
 
