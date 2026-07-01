@@ -15,9 +15,21 @@ when you explicitly want it). LM Studio is free for personal and commercial use.
 
 ## Install (run on the real GPU box, as your normal user — NOT root)
 
+**The one-command front door** — detects the tier and installs + preloads the
+models that fit your hardware:
+
+```bash
+distro-ai-setup --install     # detect tier -> install LM Studio + ComfyUI -> preload fitting models
+distro-ai-setup               # (no --install) just detect + print the plan, download nothing
+```
+
+`distro-modectl switch ai` also auto-detects the tier on first entry, so a fresh
+install picks the right models without any manual step. The individual steps
+below are what `distro-ai-setup` runs, if you'd rather do them by hand:
+
 ```bash
 # 0) Detect the hardware tier (VRAM/RAM/laptop), pick laptop profile + image model
-distro-ai-detect-tier                 # writes ~/.config/crucible-ai/{tier,profile,image}
+distro-ai-detect-tier                 # writes ~/.config/crucible-ai/{tier,profile,image,vram_mib}
                                       # (--yes = defaults, --print = preview, --tier X = force)
 
 # Text + vision LLMs (LM Studio) — 02 auto-reads the detected tier

@@ -144,6 +144,16 @@ apply_ai_model() {
         command -v distro-ai-model >/dev/null 2>&1 && distro-ai-model unload >/dev/null 2>&1 || true
     fi
     if [ -n "${AI_AUTOSTART_USECASE:-}" ]; then
+        # First AI-mode entry: auto-detect the hardware tier so the models that
+        # fit this box are what get loaded/preloaded. Idempotent (only when no
+        # tier is recorded yet) and failure-tolerant (the datacenter guard exits
+        # non-zero to route server-class GPUs to Server mode — that must not
+        # break the mode switch).
+        if command -v distro-ai-detect-tier >/dev/null 2>&1 \
+           && [ ! -f "${XDG_CONFIG_HOME:-$HOME/.config}/crucible-ai/tier" ]; then
+            distro-ai-detect-tier --yes >/dev/null 2>&1 \
+                || echo "Note: AI hardware-tier auto-detect didn't complete (server-class GPU? run distro-ai-detect-tier). Using defaults." >&2
+        fi
         if command -v distro-ai-model >/dev/null 2>&1; then
             distro-ai-model use "$AI_AUTOSTART_USECASE" \
                 || echo "WARNING: distro-ai-model failed to load the '$AI_AUTOSTART_USECASE' model — the mode still switched, but no model is loaded. Check: distro-ai-model status" >&2

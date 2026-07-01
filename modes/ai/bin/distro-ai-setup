@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+#
+# One-command AI-mode setup — the front door. Detects this machine's hardware
+# TIER, then (with --install) installs LM Studio + ComfyUI and preloads the
+# local models that fit the hardware. This is what makes "every build comes
+# pre-loaded with AIs that fit the hardware" actually happen on a real install.
+#
+# Without --install it is non-destructive: it detects + records the tier and
+# prints the exact next commands (no multi-hundred-GB download without consent).
+#
+# Usage:
+#   distro-ai-setup                 # detect tier (interactive), then print the plan
+#   distro-ai-setup --yes           # detect non-interactively (defaults), print the plan
+#   distro-ai-setup --install       # detect, then install LM Studio + preload the tier's models
+#   distro-ai-setup --install --yes # fully non-interactive end-to-end (setup wizard / first boot)
+
+set -euo pipefail
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Run as your normal user, not root (LM Studio + models are per-user)." >&2
+    exit 1
+fi
+
+SELF="${BASH_SOURCE[0]}"; [ -L "$SELF" ] && SELF="$(readlink "$SELF")"
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+SETUP_DIR="$(cd "$SCRIPT_DIR/../setup" && pwd)"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/crucible-ai"
+
+DETECT="$SCRIPT_DIR/distro-ai-detect-tier"
+[ -x "$DETECT" ] || DETECT="$(command -v distro-ai-detect-tier 2>/dev/null || echo "$DETECT")"
+
+DO_INSTALL=false
+YES=false
+for a in "$@"; do
+    case "$a" in
+        --install) DO_INSTALL=true ;;
+        --yes|-y)  YES=true ;;
+        -h|--help) sed -n '2,20p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "Unknown arg: $a (see --help)" >&2; exit 1 ;;
+    esac
+done
+
+[ -x "$DETECT" ] || { echo "distro-ai-detect-tier not found next to $SELF." >&2; exit 1; }
+
+c() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
+
+# --- Step 1: detect the hardware tier (tolerate the datacenter guard's exit 3) ---
+c 36 "== Step 1/3: detect hardware tier =="
+set +e
+if [ "$YES" = true ]; then "$DETECT" --yes; else "$DETECT"; fi
+rc=$?
+set -e
+if [ "$rc" -eq 3 ]; then
+    echo ""
+    c 33 "Server-class GPU detected — this is Crucible Server mode, not desktop AI mode (see above)."
+    exit 3
+fi
+[ "$rc" -eq 0 ] || { echo "distro-ai-detect-tier failed (exit $rc)." >&2; exit "$rc"; }
+
+TIER="$(cat "$CONFIG_HOME/tier" 2>/dev/null || echo max)"
+IMAGE="$(cat "$CONFIG_HOME/image" 2>/dev/null || echo none)"
+
+# --- Guided (default): just print the plan, download nothing ---
+if [ "$DO_INSTALL" != true ]; then
+    echo ""
+    c 36 "Plan for the '$TIER' tier (image: $IMAGE):"
+    echo "  1) $SETUP_DIR/01-install-lmstudio.sh        # LM Studio (headless)"
+    echo "  2) $SETUP_DIR/02-preload-models.sh          # preload the $TIER-tier LLMs (large download)"
+    if [ "$IMAGE" != none ]; then
+        echo "  3) $SETUP_DIR/03-install-comfyui.sh         # ComfyUI (image gen)"
+        echo "  4) $SETUP_DIR/04-download-image-models.sh --from-config   # the '$IMAGE' image model"
+    fi
+    echo ""
+    echo "Run all of the above automatically with:  distro-ai-setup --install"
+    echo "Then load a model with:                    distro-ai-model use coding"
+    exit 0
+fi
+
+# --- --install: run the setup scripts in order ---
+echo ""
+c 36 "== Step 2/3: install LM Studio + preload '$TIER' models =="
+"$SETUP_DIR/01-install-lmstudio.sh"
+"$SETUP_DIR/02-preload-models.sh"
+
+if [ "$IMAGE" != none ]; then
+    echo ""
+    c 36 "== Step 3/3: image generation ($IMAGE) via ComfyUI =="
+    "$SETUP_DIR/03-install-comfyui.sh"
+    "$SETUP_DIR/04-download-image-models.sh" --from-config
+else
+    c 36 "== Step 3/3: image generation skipped (image=none) =="
+fi
+
+echo ""
+c 32 "AI mode is set up for the '$TIER' tier. Load a model:  distro-ai-model use coding"
