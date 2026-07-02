@@ -33,9 +33,26 @@ for f in casper/initrd.img-*; do
 done
 
 mkdir -p isolinux
-cp ../chroot/usr/lib/ISOLINUX/isolinux.bin isolinux/
-# Since syslinux 5, isolinux.bin loads ldlinux.c32 from the same directory at
-# boot; without it the boot stops at "failed to load ldlinux.c32".
-cp ../chroot/usr/lib/syslinux/modules/bios/ldlinux.c32 isolinux/
+# NOTE the nested path: during the binary stage the fork's lb_binary_chroot
+# MOVES the real built system to chroot/chroot/ and puts a pristine bootstrap
+# copy at the outer chroot/ as a clean tool-chroot (verified in the fork's
+# lb_binary_chroot; run 28566772295 failed on the outer path). Our
+# bootloader.list.chroot packages live in the INNER one. Check both so this
+# also works on layouts that don't nest.
+found=""
+for root in ../chroot/chroot ../chroot; do
+    if [ -e "$root/usr/lib/ISOLINUX/isolinux.bin" ]; then
+        cp "$root/usr/lib/ISOLINUX/isolinux.bin" isolinux/
+        # Since syslinux 5, isolinux.bin loads ldlinux.c32 from the same
+        # directory at boot; without it boot stops at "failed to load ldlinux.c32".
+        cp "$root/usr/lib/syslinux/modules/bios/ldlinux.c32" isolinux/
+        found="$root"
+        break
+    fi
+done
+if [ -z "$found" ]; then
+    echo "crucible-bootfix: isolinux.bin not found in ../chroot/chroot or ../chroot — is 'isolinux' in package-lists/bootloader.list.chroot?" >&2
+    exit 1
+fi
 
-echo "crucible-bootfix: kernels renamed, isolinux.bin + ldlinux.c32 staged."
+echo "crucible-bootfix: kernels renamed, isolinux.bin + ldlinux.c32 staged (from $found)."
