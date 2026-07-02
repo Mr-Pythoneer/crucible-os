@@ -164,11 +164,19 @@ lb config \
 echo -e "\033[36mBuilding ISO (this takes a long time and a lot of disk — run on the build host, not a laptop)...\033[0m"
 lb build
 
-OUT="live-image-amd64.hybrid.iso"
+# Output name differs by live-build generation: Ubuntu's 3.0~a57 fork writes
+# binary.hybrid.iso / binary.iso (source-verified in its lb_binary_iso);
+# Debian's modern live-build writes live-image-amd64.hybrid.iso. The first
+# successful build (run 28568346976) produced binary.hybrid.iso.
 RENAMED="crucible-os-${STRAIN}.iso"
-if [ -f "$OUT" ]; then
+OUT=""
+for cand in binary.hybrid.iso live-image-amd64.hybrid.iso binary.iso; do
+    if [ -f "$cand" ]; then OUT="$cand"; break; fi
+done
+if [ -n "$OUT" ]; then
     mv "$OUT" "$RENAMED"
-    echo -e "\033[32mDone — $RENAMED\033[0m"
+    echo -e "\033[32mDone — $RENAMED ($(du -h "$RENAMED" | cut -f1))\033[0m"
 else
-    echo -e "\033[33mlb build finished but $OUT wasn't found — check the build log above.\033[0m" >&2
+    echo -e "\033[33mlb build finished but no known output ISO name was found — check the build log above.\033[0m" >&2
+    exit 1
 fi

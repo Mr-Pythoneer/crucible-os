@@ -296,7 +296,7 @@
   <div class="wrap">
     <h2>Status</h2>
     <div class="status-box">
-      <p style="margin:0 0 12px;">Said plainly, not buried: this is design-and-scaffolding stage. The full framework — driver scripts, all 5 mode bundles, 6 hardware strains, a live-build ISO pipeline, a Calamares installer config, CI — exists and is execution-tested where possible without real hardware, but <strong>no ISO has been built yet</strong> and nothing has run on real target hardware.</p>
+      <p style="margin:0 0 12px;">Said plainly, not buried: <strong>the first ISO built successfully in CI on 2026-07-02</strong> (workstation strain, 2.45&nbsp;GB — six decade-old live-build bugs fixed along the way), but it has <strong>not booted on anything yet</strong> — no VM smoke test, no real hardware, and the Calamares installer has never run. The full framework — driver scripts, all 5 mode bundles, 6 hardware strains, the build pipeline, CI — exists and is execution-tested where possible. Known limitation: the ISO is BIOS/CSM-boot only for now (Ubuntu's live-build fork has no EFI support).</p>
       <p style="margin:0; color: var(--text-dim);">The <a href="https://github.com/Mr-Pythoneer/crucible-os/blob/main/TODO.md">TODO.md</a> in the repo is the live, itemized source of truth — check there before believing anything here is further along than it is.</p>
     </div>
   </div>
