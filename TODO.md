@@ -54,8 +54,8 @@ llama.cpp port is preserved in `modes/ai/legacy-crucible12/`. See §5 / `modes/a
 - [x] Wired into `distro-ai-model` (LM Studio model switcher; was `distro-ai-preset`)
 - [x] Display-manager-disable confirmation safety + `--yes` flag for non-interactive use
 - [x] Best-effort `PINNED_APPS` dock-pinning via `gsettings` (GNOME-only, runs pre-sudo so it has the user's session bus; desktop-file IDs unverified)
-- [ ] **(needs hardware/VM)** verify `cpupower`/`powerprofilesctl` calls on a real (non-Mac) Linux box — this part doesn't need the GPU server specifically
-- [ ] **(needs hardware/VM)** verify service enable/disable doesn't fight stock Ubuntu defaults
+- [ ] **(needs hardware/VM)** verify `cpupower`/`powerprofilesctl` calls on a real (non-Mac) Linux box — this part doesn't need the GPU server specifically → **planned box: the incoming low-RAM arm64 Pi**, full matrix in `docs/pi-test-runbook.md`
+- [ ] **(needs hardware/VM)** verify service enable/disable doesn't fight stock Ubuntu defaults → same Pi runbook
 - [x] GPU performance-state pinning — `apply_gpu_perf` in `distro-modectl`, driven by each profile's `GPU_PERF=max|auto` (Gaming/Creative pin max, others reset). nvidia-smi persistence + clock-lock (headless/Wayland-safe) + nvidia-settings GpuPowerMizerMode on X11. Web-verified command set; **(needs hardware)** to confirm it changes GPU state.
 
 ## 5. Gaming mode — `modes/gaming/`
