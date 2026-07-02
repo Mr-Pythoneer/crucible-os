@@ -110,14 +110,23 @@ for bin in "${!DISTRO_BINS[@]}"; do
 done
 find "$INCLUDES/opt/distro" -type f \( -name "*.sh" -o -name "distro-*" \) -exec chmod +x {} +
 
-# Neutralize the old fork's mode-ubuntu gfxboot step: lb_binary_syslinux runs
-# `tar xfz /usr/share/gfxboot-theme-ubuntu/bootlogo.tar.gz` in the chroot for
-# EVERY syslinux theme (it's gated on mode, not theme), but that package died
-# ~Ubuntu 12.04. An empty tarball pre-placed via includes.chroot makes the tar
-# a no-op AND satisfies the fork's Check_package existence test so it never
-# tries to install the dead package. (~45 bytes in the installed system.)
+# Neutralize the old fork's mode-ubuntu gfxboot machinery. Two unconditional
+# steps in lb_binary_syslinux assume the long-dead gfxboot-theme-ubuntu
+# package (~Ubuntu 12.04):
+#   1. `tar xfz /usr/share/gfxboot-theme-ubuntu/bootlogo.tar.gz` into the
+#      bootloader dir (gated on mode, NOT theme), and
+#   2. a "gfxboot hack" that does `cpio -i < binary/isolinux/bootlogo` and
+#      repacks it — an fatal redirect error if bootlogo doesn't exist (this
+#      killed run 28566217894 at lb_binary_syslinux line 365).
+# So the stub tarball must CONTAIN a file named 'bootlogo' that is a valid
+# (empty) cpio archive: the tar extraction places it, the hack round-trips it,
+# and since our isolinux.cfg never loads gfxboot.c32 the file is inert on the
+# ISO. Also satisfies Check_package so the dead package is never wanted.
 mkdir -p "$INCLUDES/usr/share/gfxboot-theme-ubuntu"
-tar -czf "$INCLUDES/usr/share/gfxboot-theme-ubuntu/bootlogo.tar.gz" -T /dev/null
+_glogo="$(mktemp -d)"
+: | cpio --quiet -o > "$_glogo/bootlogo"   # valid cpio archive with only TRAILER
+tar -czf "$INCLUDES/usr/share/gfxboot-theme-ubuntu/bootlogo.tar.gz" -C "$_glogo" bootlogo
+rm -rf "$_glogo"
 
 # Binary hooks are exec'd directly by the fork's lb_binary_hooks — must be +x.
 find "$(dirname "${BASH_SOURCE[0]}")/config/hooks" -maxdepth 1 -type f -name "*.binary" -exec chmod +x {} + 2>/dev/null || true
