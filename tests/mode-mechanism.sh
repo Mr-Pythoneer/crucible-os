@@ -161,12 +161,16 @@ run_switch() {  # run_switch <mode>
     local mode="$1"
     make_stubs
     rm -rf "$LOG_DIR"; mkdir -p "$LOG_DIR"
-    # /run may be a tmpfs we can't write from a stripped chroot; ensure the dir.
-    mkdir -p "$(dirname "$STATE_FILE")"
+    # State dir: /run/distro-modectl is root-owned; the CI pre-creates it owned by
+    # uid 1000 before this (root-only) step. As uid 1000 we just clear any stale
+    # file. Guard everything so a read-only/again-owned dir can't abort the run.
+    mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
     rm -f "$STATE_FILE" 2>/dev/null || true
-    # Wallpaper files must exist so apply_theme's `[ -f "$WALLPAPER" ]` passes.
-    mkdir -p "$WALL_DIR"
-    : > "$WALL_DIR/$mode.png"
+    # Wallpaper files must exist so apply_theme's `[ -f "$WALLPAPER" ]` passes. In
+    # the real image they already ship under $WALL_DIR (root-owned, readable); only
+    # create a placeholder if one is genuinely missing AND we can write it.
+    mkdir -p "$WALL_DIR" 2>/dev/null || true
+    [ -f "$WALL_DIR/$mode.png" ] || : > "$WALL_DIR/$mode.png" 2>/dev/null || true
 
     echo "=================================================================="
     echo ">>> switch $mode"

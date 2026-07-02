@@ -89,6 +89,13 @@ jobs:
           echo "=== distro-modectl status (sanity: it runs in the image) ==="
           sudo chroot root /usr/local/bin/distro-modectl status || true
 
+          # The switcher writes its state file to /run/distro-modectl (root:root
+          # 0755 in the squashfs). Since the whole harness runs as uid 1000 (below),
+          # pre-create that dir owned by 1000 as ROOT here, or the state-file write
+          # (and its assertion) fails. The mode wallpapers already ship in the image
+          # at /usr/share/backgrounds/refract, so the harness doesn't create those.
+          sudo chroot root sh -c 'mkdir -p /run/distro-modectl && chown 1000:1000 /run/distro-modectl'
+
           echo "=== 5-mode mechanism assertions (real shipped distro-modectl) ==="
           # Run the switcher as a NON-root uid (1000), exactly like install-smoke:
           # the mode-mechanism harness's own id/sudo stubs then drive the
