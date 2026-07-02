@@ -1,57 +1,72 @@
 #!/bin/sh
-# Refract OS macOS look — install the WhiteSur GTK + icon themes SYSTEM-WIDE so
-# the default (Normal-mode) desktop looks like macOS out of the box, not like
-# Ubuntu. The dock position/behaviour + which theme to USE are set separately in
-# the dconf system db (iso/branding/dconf/local.d/00-refract) and the glib
-# override; this hook just makes the themes those settings name actually exist.
+# Refract OS macOS look — WhiteSur GTK + icon themes SYSTEM-WIDE + the Blur-my-Shell
+# extension (the frosted "liquid glass" used by Normal mode). Runs in the chroot
+# AS ROOT — which matters: WhiteSur's installer writes temp assets that fail as a
+# non-root user (that's why it silently no-op'd on bare CI runners). Failure-
+# tolerant: these are cosmetic, so a hiccup logs and the ISO still builds (the
+# desktop just falls back to dark Yaru / no blur).
 #
-# Same upstream + pinned commits as modes/normal/setup/01-install-whitesur-theme.sh
-# (vinceliuice/WhiteSur-*), but installed to /usr/share instead of ~/. This is
-# download-and-run of third-party code at BUILD time (in CI), pinned by SHA and
-# verified before install. Deliberately failure-TOLERANT: a network/compile
-# hiccup logs and exits 0 so the ISO still builds (desktop falls back to the
-# dark Yaru theme), rather than failing the whole image over a cosmetic theme.
+# Pinned upstream commits (fetch-by-SHA, verified before use):
+GTK_SHA="a83f467e4c16b1ed1c960f3d89e2472d9639477c"   # vinceliuice/WhiteSur-gtk-theme
+ICON_SHA="3cc051a4709e67921a9d47cd2a3e0111bbe5e2bd"  # vinceliuice/WhiteSur-icon-theme
+BMS_SHA="c9002511c7c8ad65931e3f875fe0ea93b8123394"   # aunetx/blur-my-shell
 
-GTK_SHA="a83f467e4c16b1ed1c960f3d89e2472d9639477c"
-ICON_SHA="3cc051a4709e67921a9d47cd2a3e0111bbe5e2bd"
-
-if ! command -v git >/dev/null 2>&1; then
-    echo "macos-look: git not present — skipping WhiteSur install (desktop keeps dark Yaru)." >&2
-    exit 0
-fi
-
+command -v git >/dev/null 2>&1 || { echo "macos-look: git missing — skipping."; exit 0; }
 WORK="$(mktemp -d)"
 # shellcheck disable=SC2064
 trap "rm -rf '$WORK'" EXIT INT TERM
 
-clone_pin() {
-    repo="$1"; want="$2"; dir="$WORK/$repo"
-    git init -q "$dir" || return 1
-    git -C "$dir" remote add origin "https://github.com/vinceliuice/${repo}.git" || return 1
-    if ! git -C "$dir" fetch -q --depth 1 origin "$want" 2>/dev/null; then
-        echo "macos-look: could not fetch ${repo}@${want} (network?) — skipping it." >&2
-        return 1
+clone_pin() {  # url sha dir
+    git init -q "$3" 2>/dev/null || return 1
+    git -C "$3" remote add origin "$1" 2>/dev/null || return 1
+    if ! git -C "$3" fetch -q --depth 1 origin "$2" 2>/dev/null; then
+        echo "macos-look: fetch failed for $1@$2 (network?) — skipping it." >&2; return 1
     fi
-    git -C "$dir" checkout -q FETCH_HEAD || return 1
-    got="$(git -C "$dir" rev-parse HEAD 2>/dev/null)"
-    if [ "$got" != "$want" ]; then
-        echo "macos-look: ${repo} HEAD ($got) != pinned ($want) — refusing unverified code." >&2
-        return 1
-    fi
-    return 0
+    git -C "$3" checkout -q FETCH_HEAD 2>/dev/null || return 1
+    [ "$(git -C "$3" rev-parse HEAD 2>/dev/null)" = "$2" ] || { echo "macos-look: $1 sha mismatch — refusing." >&2; return 1; }
 }
 
-if clone_pin WhiteSur-gtk-theme "$GTK_SHA"; then
-    echo "macos-look: installing WhiteSur GTK + GNOME Shell theme system-wide..."
-    "$WORK/WhiteSur-gtk-theme/install.sh" -d /usr/share/themes -c Dark -c Light 2>/dev/null \
-        || "$WORK/WhiteSur-gtk-theme/install.sh" -d /usr/share/themes 2>/dev/null \
-        || echo "macos-look: GTK theme install reported errors (continuing)." >&2
+# --- WhiteSur GTK: install to a temp dir (NOT a system dir → avoids the script's
+#     internal sudo path), then copy in. stderr is intentionally VISIBLE now. ---
+if clone_pin https://github.com/vinceliuice/WhiteSur-gtk-theme.git "$GTK_SHA" "$WORK/ws-gtk"; then
+    echo "macos-look: installing WhiteSur GTK + GNOME Shell theme..."
+    mkdir -p "$WORK/ws-out"
+    if command -v script >/dev/null 2>&1; then
+        # pseudo-TTY: the installer's animated output no-ops on a non-tty.
+        script -qfec "$WORK/ws-gtk/install.sh -d $WORK/ws-out" /dev/null \
+            || echo "macos-look: WhiteSur GTK installer returned non-zero (continuing)." >&2
+    else
+        "$WORK/ws-gtk/install.sh" -d "$WORK/ws-out" \
+            || echo "macos-look: WhiteSur GTK installer returned non-zero (continuing)." >&2
+    fi
+    cp -a "$WORK/ws-out/." /usr/share/themes/ 2>/dev/null || true
 fi
 
-if clone_pin WhiteSur-icon-theme "$ICON_SHA"; then
-    echo "macos-look: installing WhiteSur icon theme system-wide..."
-    "$WORK/WhiteSur-icon-theme/install.sh" -d /usr/share/icons 2>/dev/null \
-        || echo "macos-look: icon theme install reported errors (continuing)." >&2
+# --- WhiteSur icons (these install cleanly) ---
+if clone_pin https://github.com/vinceliuice/WhiteSur-icon-theme.git "$ICON_SHA" "$WORK/ws-icon"; then
+    echo "macos-look: installing WhiteSur icon theme..."
+    "$WORK/ws-icon/install.sh" -d /usr/share/icons \
+        || echo "macos-look: icon installer returned non-zero (continuing)." >&2
+fi
+
+# --- Blur-my-Shell (glass): NOT in apt, and `make build` needs tooling the chroot
+#     lacks — so assemble the extension by hand from the repo layout
+#     (src/{extension,prefs}.js + metadata.json + schemas/ + resources/). ---
+if clone_pin https://github.com/aunetx/blur-my-shell.git "$BMS_SHA" "$WORK/bms"; then
+    echo "macos-look: installing Blur-my-Shell (liquid glass)..."
+    EXTD=/usr/share/gnome-shell/extensions/blur-my-shell@aunetx
+    mkdir -p "$EXTD"
+    cp -a "$WORK/bms/src/." "$EXTD/" 2>/dev/null || true
+    cp -a "$WORK/bms/metadata.json" "$EXTD/" 2>/dev/null || true
+    # gnome-extensions pack copies resources/{icons,ui} to the extension root.
+    [ -d "$WORK/bms/resources/icons" ] && cp -a "$WORK/bms/resources/icons" "$EXTD/" 2>/dev/null || true
+    [ -d "$WORK/bms/resources/ui" ]    && cp -a "$WORK/bms/resources/ui"    "$EXTD/" 2>/dev/null || true
+    if [ -d "$WORK/bms/schemas" ]; then
+        cp -a "$WORK/bms/schemas" "$EXTD/"
+        command -v glib-compile-schemas >/dev/null 2>&1 && glib-compile-schemas "$EXTD/schemas" 2>/dev/null || true
+    fi
+    [ -f "$EXTD/extension.js" ] && echo "macos-look: Blur-my-Shell assembled." \
+        || echo "macos-look: Blur-my-Shell assemble incomplete — Normal mode has no glass." >&2
 fi
 
 for t in WhiteSur WhiteSur-dark; do
@@ -59,20 +74,7 @@ for t in WhiteSur WhiteSur-dark; do
         && gtk-update-icon-cache -qf "/usr/share/icons/$t" 2>/dev/null || true
 done
 
-if [ -d /usr/share/themes/WhiteSur-Dark ]; then
-    echo "macos-look: WhiteSur installed — default desktop will render macOS-style."
-else
-    echo "macos-look: WhiteSur NOT installed — desktop falls back to dark Yaru." >&2
-fi
-
-# Blur-my-Shell — the frosted "liquid glass" blur behind the panel/dock/overview.
-# Normal mode enables it (distro-modectl + the dconf default); every other mode
-# disables it, since real-time blur is GPU-heavy. Debian-packaged, so system-wide
-# and safe. If it's not available, Normal mode simply has no blur (WhiteSur still
-# applies) — never fail the ISO over an optional cosmetic extension.
-if apt-get install -y --no-install-recommends gnome-shell-extension-blur-my-shell 2>/dev/null; then
-    echo "macos-look: Blur-my-Shell installed — Normal-mode liquid glass available."
-else
-    echo "macos-look: blur-my-shell package unavailable — Normal mode has no glass (WhiteSur still applies)." >&2
-fi
+[ -d /usr/share/themes/WhiteSur-Dark ] \
+    && echo "macos-look: WhiteSur-Dark GTK present — default desktop renders macOS-style." \
+    || echo "macos-look: WhiteSur-Dark GTK MISSING — desktop falls back to dark Yaru." >&2
 exit 0
