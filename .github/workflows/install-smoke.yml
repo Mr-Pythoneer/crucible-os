@@ -22,9 +22,16 @@ on:
         description: "build-iso run id (empty = latest successful)"
         required: false
         default: ""
+      phase:
+        description: "which job(s) to run"
+        type: choice
+        required: false
+        default: "both"
+        options: [both, inspect, install]
 
 jobs:
   inspect:
+    if: ${{ inputs.phase != 'install' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -124,11 +131,15 @@ jobs:
           echo "--- distro-ai-detect-tier --print (in image, no GPU -> cpu) ---"
           sudo chroot root /usr/local/bin/distro-ai-detect-tier --print | sed 's/\x1b\[[0-9;]*m//g' | grep -E "Tier:|GPU:"
           echo "--- full hermetic test suite on the real image (bash5/GNU) ---"
-          sudo chroot root bash /opt/testkit/tests/run.sh
+          # Run the suite as a NON-root uid: distro-ai-setup / 04-download-image-
+          # models.sh intentionally refuse to run as root, and sudo chroot is root.
+          sudo chroot root setpriv --reuid 1000 --regid 1000 --clear-groups \
+            env HOME=/tmp TMPDIR=/tmp bash /opt/testkit/tests/run.sh
           for fs in proc sys dev; do sudo umount "root/$fs" || true; done
           sudo umount root || true
 
   install:
+    if: ${{ inputs.phase != 'inspect' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
