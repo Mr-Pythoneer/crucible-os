@@ -1,7 +1,7 @@
 name: theme-probe
-# Throwaway diagnostic (v3): the pinned-old WhiteSur commit's install.sh exits 1
-# right after its banner. Try LATEST WhiteSur with a bash -x trace to find the
-# failing command, and build blur-my-shell from source (it is NOT in apt).
+# Throwaway diagnostic (v4): test the ACTUAL fixes. WhiteSur under a pseudo-TTY
+# (its installer's exec-spinner no-ops without a TTY), and blur-my-shell
+# assembled by hand (make build fails Error 127 on a headless runner).
 on:
   workflow_dispatch:
 
@@ -16,24 +16,26 @@ jobs:
           sudo apt-get install -y sassc libglib2.0-dev-bin libxml2-utils git \
             gnome-themes-extra make gettext
 
-      - name: WhiteSur GTK latest — trace the failing command
+      - name: WhiteSur under a pseudo-TTY (script)
         continue-on-error: true
         run: |
           git clone --depth 1 https://github.com/vinceliuice/WhiteSur-gtk-theme.git ws
-          echo "WS_HEAD=$(git -C ws rev-parse HEAD)"
           mkdir -p /tmp/ws-out
-          echo "=== bash -x trace (last 40 lines before it stops) ==="
-          bash -x ws/install.sh -d /tmp/ws-out 2>&1 | tail -40 || true
-          echo "=== result ==="
+          script -qfec "ws/install.sh -d /tmp/ws-out" /dev/null 2>&1 | tail -20 || true
+          echo "=== /tmp/ws-out contents ==="; ls /tmp/ws-out 2>/dev/null || echo "(empty)"
           ls -d /tmp/ws-out/WhiteSur-Dark 2>/dev/null && echo "WHITESUR_OK" || echo "WHITESUR_MISSING"
 
-      - name: blur-my-shell — build from source + locate extension
+      - name: blur-my-shell layout + manual assemble
         continue-on-error: true
         run: |
           git clone --depth 1 https://github.com/aunetx/blur-my-shell.git bms
-          echo "BMS_HEAD=$(git -C bms rev-parse HEAD)"
-          make -C bms build 2>&1 | tail -15 || make -C bms 2>&1 | tail -15 || true
-          echo "=== metadata.json locations ==="
-          find bms -name metadata.json -not -path '*/node_modules/*'
-          echo "=== does _build exist? ==="
-          ls -la bms/_build 2>/dev/null | head || echo "no _build dir"
+          echo "=== repo root ==="; ls bms
+          echo "=== src/ ==="; ls bms/src 2>/dev/null || echo "(no src)"
+          echo "=== resources/ ==="; ls bms/resources 2>/dev/null || echo "(no resources)"
+          echo "=== Makefile head ==="; sed -n '1,30p' bms/Makefile
+          mkdir -p /tmp/ext
+          cp -r bms/src/* /tmp/ext/ 2>/dev/null || true
+          cp bms/metadata.json /tmp/ext/ 2>/dev/null || true
+          [ -d bms/schemas ] && cp -r bms/schemas /tmp/ext/ && glib-compile-schemas /tmp/ext/schemas 2>&1 || true
+          echo "=== assembled /tmp/ext ==="; ls -R /tmp/ext | head -40
+          { [ -f /tmp/ext/extension.js ] && [ -f /tmp/ext/metadata.json ]; } && echo "EXT_OK" || echo "EXT_INCOMPLETE"
