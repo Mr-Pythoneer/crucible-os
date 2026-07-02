@@ -111,12 +111,20 @@ done
 find "$INCLUDES/opt/distro" -type f \( -name "*.sh" -o -name "distro-*" \) -exec chmod +x {} +
 
 echo -e "\033[36mConfiguring live-build...\033[0m"
+# Ubuntu's live-build fork (3.0~a57-based — what `apt install live-build` gives
+# on noble / ubuntu-latest) rejects '--debian-installer none' at the BINARY
+# stage ("debian-installer flavour none not supported"; hit by the first real
+# CI build, run 28564744308). Its disable value is 'false'. Debian's modern
+# live-build (2023xxxx+) is the opposite: it wants 'none'. Pick by version so
+# the same script works on either build host.
+DI_OFF="none"
+case "$(lb --version 2>/dev/null)" in 3.0*) DI_OFF="false" ;; esac
 lb config \
     --distribution noble \
     --architectures amd64 \
     --linux-flavours generic-hwe-24.04 \
     --archive-areas "main restricted universe multiverse" \
-    --debian-installer none \
+    --debian-installer "$DI_OFF" \
     --iso-application "Crucible OS ($STRAIN)" \
     --iso-volume "CRUCIBLEOS"
 # --iso-volume deliberately does NOT vary by strain: ISO9660 volume labels
